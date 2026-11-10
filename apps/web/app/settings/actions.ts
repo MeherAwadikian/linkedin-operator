@@ -39,9 +39,19 @@ export async function saveSecret(formData: FormData): Promise<void> {
   revalidatePath('/settings');
 }
 
-/** Save the LinkedIn email (to accounts) and password (to the vault). */
+/** Upsert a single per-user key/value into app.settings. */
+async function saveSetting(userId: string, key: string, value: unknown): Promise<void> {
+  const supabase = await createClient();
+  await supabase
+    .schema('app')
+    .from('settings')
+    .upsert({ user_id: userId, key, value }, { onConflict: 'user_id,key' });
+}
+
+/** Save the LinkedIn email + profile link (to accounts/settings) and password (to the vault). */
 export async function saveLinkedInAccount(formData: FormData): Promise<void> {
   const email = String(formData.get('email') ?? '').trim();
+  const profileUrl = String(formData.get('profile_url') ?? '').trim();
   const password = String(formData.get('password') ?? '');
   const supabase = await createClient();
   const {
@@ -57,9 +67,19 @@ export async function saveLinkedInAccount(formData: FormData): Promise<void> {
       .eq('user_id', user.id)
       .eq('platform', 'linkedin');
   }
-  if (password) {
-    await forwardSecret(user.id, 'linkedin_password', password);
-  }
+  if (profileUrl) await saveSetting(user.id, 'linkedin_profile_url', { url: profileUrl });
+  if (password) await forwardSecret(user.id, 'linkedin_password', password);
+  revalidatePath('/settings');
+}
+
+/** Save the Gmail address (to settings) and password (to the vault). Per-user. */
+export async function saveGmailAccount(formData: FormData): Promise<void> {
+  const address = String(formData.get('address') ?? '').trim();
+  const password = String(formData.get('password') ?? '');
+  const userId = await currentUserId();
+  if (!userId) return;
+  if (address) await saveSetting(userId, 'gmail_address', { address });
+  if (password) await forwardSecret(userId, 'gmail_password', password);
   revalidatePath('/settings');
 }
 

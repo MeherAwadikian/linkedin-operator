@@ -5,6 +5,7 @@ import { storeSecret } from './secrets-store.ts';
 
 const ALLOWED_KINDS: readonly SecretKind[] = [
   'linkedin_password',
+  'gmail_password',
   'anthropic_key',
   'openrouter_key',
   'deepseek_key',

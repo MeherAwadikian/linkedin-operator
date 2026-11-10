@@ -23,7 +23,12 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
 /** The kinds of secret the vault stores (mirrors the `secrets.kind` column). */
-export type SecretKind = 'linkedin_password' | 'anthropic_key' | 'openrouter_key' | 'deepseek_key';
+export type SecretKind =
+  | 'linkedin_password'
+  | 'gmail_password'
+  | 'anthropic_key'
+  | 'openrouter_key'
+  | 'deepseek_key';
 
 /** Serialized, DB-ready encrypted secret. All binary fields are base64. */
 export interface SealedSecret {
