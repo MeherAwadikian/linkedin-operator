@@ -130,7 +130,15 @@ export { classifyLinkedInPage, isBlocked } from './linkedin/checkpoint.ts';
 export type { PageState, PageSignal, PageClassification } from './linkedin/checkpoint.ts';
 export { isLinkedInProfileUrl, isLinkedInHost } from './linkedin/url.ts';
 
-export { runPersonaChecks, spamCheck, analyzeReadability, personaLint } from './persona/index.ts';
+export {
+  runPersonaChecks,
+  spamCheck,
+  analyzeReadability,
+  personaLint,
+  generateDraft,
+  buildDraftSystemPrompt,
+  MEDIUM_MAX_CHARS,
+} from './persona/index.ts';
 export type {
   PersonaCheckResult,
   SpamReport,
@@ -138,6 +146,10 @@ export type {
   ReadabilityReport,
   PersonaLintOptions,
   PersonaLintResult,
+  DraftMedium,
+  PersonaSpec,
+  DraftRequest,
+  DraftResult,
 } from './persona/index.ts';
 
 export {
