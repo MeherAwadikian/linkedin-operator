@@ -129,6 +129,9 @@ export { dedupeKey } from './dedupe.ts';
 export { isWriteAction, resolveApprovalLevel, initialJobStatus } from './rules/approval.ts';
 export type { InitialJobStatus } from './rules/approval.ts';
 
+export { planCommand, buildPlannerSystemPrompt, extractJsonObject } from './console/planner.ts';
+export type { PlanResult } from './console/planner.ts';
+
 export { classifyLinkedInPage, isBlocked } from './linkedin/checkpoint.ts';
 export type { PageState, PageSignal, PageClassification } from './linkedin/checkpoint.ts';
 export { isLinkedInProfileUrl, isLinkedInHost } from './linkedin/url.ts';
