@@ -126,6 +126,9 @@ export type { JobInput, ScoringProfile, SkillAngle, ScorePart, ScoreResult } fro
 
 export { dedupeKey } from './dedupe.ts';
 
+export { isWriteAction, resolveApprovalLevel, initialJobStatus } from './rules/approval.ts';
+export type { InitialJobStatus } from './rules/approval.ts';
+
 export { classifyLinkedInPage, isBlocked } from './linkedin/checkpoint.ts';
 export type { PageState, PageSignal, PageClassification } from './linkedin/checkpoint.ts';
 export { isLinkedInProfileUrl, isLinkedInHost } from './linkedin/url.ts';
