@@ -151,6 +151,7 @@ create table app.actions_log (
 
 create table app.postings (
   id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   source      text,
   external_id text,
   title       text,
@@ -160,7 +161,8 @@ create table app.postings (
   salary_text text,
   raw         jsonb,
   first_seen  timestamptz not null default now(),
-  dedupe_hash text not null unique
+  dedupe_hash text not null,
+  unique (user_id, dedupe_hash)
 );
 
 create table app.scores (
@@ -173,6 +175,7 @@ create table app.scores (
 
 create table app.applications (
   id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   posting_id  uuid references app.postings (id) on delete set null,
   status      text not null default 'FOUND' check (status in (
                 'FOUND','SCORED','WAITING_APPROVAL','APPLIED','REJECTED',
@@ -184,6 +187,7 @@ create table app.applications (
 
 create table app.recruiters (
   id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name        text,
   company     text,
   profile_url text,
@@ -193,16 +197,19 @@ create table app.recruiters (
 
 create table app.people (
   id           uuid primary key default gen_random_uuid(),
-  profile_url  text not null unique,
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  profile_url  text not null,
   display_name text,
   headline     text,
   company      text,
   collected_at timestamptz not null default now(),
-  raw          jsonb
+  raw          jsonb,
+  unique (user_id, profile_url)
 );
 
 create table app.conversations (
   id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
   person_id  uuid references app.people (id) on delete set null,
   thread_url text
 );
@@ -218,6 +225,7 @@ create table app.messages (
 
 create table app.drafts (
   id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null default auth.uid() references auth.users (id) on delete cascade,
   kind             text not null check (kind in ('message','comment','post','connect_note')),
   target           jsonb,
   body             text not null default '',
@@ -232,6 +240,7 @@ create table app.drafts (
 
 create table app.automations (
   id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name        text not null,
   trigger     text not null default 'manual' check (trigger in ('manual','schedule')),
   cron        text,
@@ -242,6 +251,7 @@ create table app.automations (
 
 create table app.connectors (
   id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name      text not null,
   kind      text not null check (kind in ('job_board','ats')),
   config    jsonb not null default '{}'::jsonb,
@@ -251,6 +261,7 @@ create table app.connectors (
 
 create table app.repos (
   id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name      text not null,
   url       text,
   kind      text,
@@ -260,6 +271,7 @@ create table app.repos (
 
 create table app.apps (
   id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name      text not null,
   url       text,
   kind      text,
@@ -286,32 +298,33 @@ create table app.candidate_profile (
 );
 
 
--- Row-Level Security (plan §4). RLS is enabled on EVERY table.
---  * Owner tables (have user_id): the authenticated owner may do everything.
---  * secrets / browser_sessions: NO policy at all → unreachable by the anon or
---    authenticated client; only the worker's service_role key (which bypasses
---    RLS) can read or write them.
---  * Shared single-user work tables: any authenticated session (the owner) may
---    do everything; anon gets nothing.
+-- Row-Level Security (plan §4). RLS is enabled on EVERY table, and every table
+-- is OWNER-SCOPED — there is no `using (true)` escape hatch, so a stray public
+-- sign-up can never read another user's data.
+--  * Tables with a user_id column → owner policy (user_id = auth.uid()).
+--  * True child tables (non-null parent FK) → scoped through the parent's owner.
+--  * secrets / browser_sessions → NO policy at all: only the worker's
+--    service_role key (which bypasses RLS) can reach them.
 
 -- Enable RLS everywhere.
 do $$
 declare t text;
 begin
-  for t in
-    select table_name from information_schema.tables where table_schema = 'app'
+  for t in select table_name from information_schema.tables where table_schema = 'app'
   loop
     execute format('alter table app.%I enable row level security;', t);
   end loop;
 end $$;
 
--- Owner-scoped policies (user_id = auth.uid()).
+-- Owner-scoped policies for every table that carries user_id.
 do $$
 declare t text;
 begin
   for t in select unnest(array[
     'settings','rules','personas','rate_limit_counters','accounts',
-    'jobs_queue','actions_log','command_sessions','candidate_profile'])
+    'jobs_queue','actions_log','command_sessions','candidate_profile',
+    'postings','applications','recruiters','people','conversations',
+    'drafts','automations','connectors','repos','apps'])
   loop
     execute format($f$
       create policy owner_all on app.%I
@@ -322,22 +335,26 @@ begin
   end loop;
 end $$;
 
--- Shared single-user work tables: authenticated owner full access, anon none.
-do $$
-declare t text;
-begin
-  for t in select unnest(array[
-    'rule_revisions','approvals','postings','scores','applications',
-    'recruiters','people','conversations','messages','drafts',
-    'automations','connectors','repos','apps'])
-  loop
-    execute format($f$
-      create policy authed_all on app.%I
-        for all to authenticated
-        using (true) with check (true);
-    $f$, t);
-  end loop;
-end $$;
+-- True child tables: scope through the parent's owner (parent FK is NOT NULL).
+create policy owner_via_parent on app.rule_revisions
+  for all to authenticated
+  using (exists (select 1 from app.rules r where r.id = rule_id and r.user_id = (select auth.uid())))
+  with check (exists (select 1 from app.rules r where r.id = rule_id and r.user_id = (select auth.uid())));
+
+create policy owner_via_parent on app.approvals
+  for all to authenticated
+  using (exists (select 1 from app.jobs_queue j where j.id = job_id and j.user_id = (select auth.uid())))
+  with check (exists (select 1 from app.jobs_queue j where j.id = job_id and j.user_id = (select auth.uid())));
+
+create policy owner_via_parent on app.scores
+  for all to authenticated
+  using (exists (select 1 from app.postings p where p.id = posting_id and p.user_id = (select auth.uid())))
+  with check (exists (select 1 from app.postings p where p.id = posting_id and p.user_id = (select auth.uid())));
+
+create policy owner_via_parent on app.messages
+  for all to authenticated
+  using (exists (select 1 from app.conversations c where c.id = conversation_id and c.user_id = (select auth.uid())))
+  with check (exists (select 1 from app.conversations c where c.id = conversation_id and c.user_id = (select auth.uid())));
 
 -- secrets and browser_sessions intentionally get NO policy: service_role only.
 -- (RLS is enabled above; with no policy, non-service roles are denied.)
