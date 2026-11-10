@@ -1,9 +1,17 @@
 import { defaultRules } from '@lo/core';
 import { redirect } from 'next/navigation';
+import { enqueueNoop } from './actions.ts';
 import { NavShell } from '../components/nav-shell.tsx';
 import { createClient } from '../lib/supabase/server.ts';
 
 export const dynamic = 'force-dynamic';
+
+interface JobSummary {
+  id: string;
+  type: string;
+  status: string;
+  created_at: string;
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -14,16 +22,52 @@ export default async function DashboardPage() {
   // Middleware already gates this, but guard here too (defense in depth).
   if (!user) redirect('/login');
 
+  const { data: jobs } = await supabase
+    .schema('app')
+    .from('jobs_queue')
+    .select('id,type,status,created_at')
+    .order('created_at', { ascending: false })
+    .limit(5);
+  const recentJobs = (jobs ?? []) as JobSummary[];
+
   const rules = defaultRules();
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          No LinkedIn account connected yet. Read-only until the worker + credentials are wired.
-        </p>
+      <header className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            No LinkedIn account connected yet. Read-only until the worker + credentials are wired.
+          </p>
+        </div>
+        <form action={enqueueNoop}>
+          <button
+            type="submit"
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+          >
+            Enqueue test job
+          </button>
+        </form>
       </header>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+          Recent jobs
+        </h2>
+        {recentJobs.length === 0 ? (
+          <p className="text-sm text-neutral-500">No jobs yet. Enqueue a test job above.</p>
+        ) : (
+          <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
+            {recentJobs.map((j) => (
+              <li key={j.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                <span className="font-mono">{j.type}</span>
+                <span className="text-neutral-500">{j.status}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">

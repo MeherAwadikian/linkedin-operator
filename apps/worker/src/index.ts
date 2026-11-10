@@ -7,8 +7,11 @@
  * Playwright login (#6), checkpoint hard-stop (#7), and the action executor.
  */
 import { defaultRules, Redactor } from '@lo/core';
+import { drainQueue, heartbeat, type JobRow } from './queue.ts';
+import { createServiceClient } from './supabase.ts';
 
 const HEARTBEAT_MS = Number(process.env.WORKER_HEARTBEAT_MS ?? 5000);
+const WORKER_ID = process.env.WORKER_ID ?? 'worker-local';
 
 /**
  * Process-wide redactor. Decrypted secrets get registered here the moment they
@@ -22,18 +25,43 @@ function log(event: string, data: Record<string, unknown> = {}): void {
   console.log(JSON.stringify(safe));
 }
 
+// Phase 0 no-op handler: echoes the job type back. Real action handlers
+// (search/collect/like/comment/…) land in later issues; the executor that
+// enforces rules, rate limits, and the hard-coded stop-on-checkpoint policy
+// sits between this and Playwright.
+async function handleJob(
+  job: JobRow,
+): Promise<{ status: 'done'; result: Record<string, unknown> }> {
+  return { status: 'done', result: { echoed: job.type } };
+}
+
 async function main(): Promise<void> {
+  const sb = createServiceClient();
   log('worker.boot', {
     node: process.version,
     heartbeatMs: HEARTBEAT_MS,
     ruleCount: defaultRules().length,
+    workerId: WORKER_ID,
+    supabase: sb ? 'connected' : 'not configured (local heartbeat only)',
   });
 
   let beat = 0;
   const timer = setInterval(() => {
     beat += 1;
-    log('worker.heartbeat', { beat });
+    void tick(beat).catch((err: unknown) => {
+      log('worker.tick_error', { message: err instanceof Error ? err.message : String(err) });
+    });
   }, HEARTBEAT_MS);
+
+  async function tick(n: number): Promise<void> {
+    if (!sb) {
+      log('worker.heartbeat', { beat: n });
+      return;
+    }
+    await heartbeat(sb, WORKER_ID, { beat: n }, new Date().toISOString());
+    const processed = await drainQueue(sb, WORKER_ID, handleJob);
+    log('worker.heartbeat', { beat: n, processed });
+  }
 
   const shutdown = (signal: string): void => {
     clearInterval(timer);
