@@ -63,6 +63,27 @@ export async function saveLinkedInAccount(formData: FormData): Promise<void> {
   revalidatePath('/settings');
 }
 
+/** Edit the active persona's tone + banned openers (plan §8). */
+export async function updatePersona(formData: FormData): Promise<void> {
+  const tone = String(formData.get('tone') ?? '').trim();
+  const bannedOpeners = String(formData.get('banned_openers') ?? '')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase
+    .schema('app')
+    .from('personas')
+    .update({ tone_instructions: tone, banned_openers: bannedOpeners })
+    .eq('user_id', user.id)
+    .eq('active', true);
+  revalidatePath('/settings');
+}
+
 /** Toggle global dry-run mode (forces all write actions to await approval). */
 export async function setDryRun(formData: FormData): Promise<void> {
   const enabled = String(formData.get('enabled')) === 'true';
