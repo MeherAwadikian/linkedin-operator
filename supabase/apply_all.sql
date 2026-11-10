@@ -1,5 +1,5 @@
 -- LinkedIn Operator — full initial DB setup (apply in your SQL editor or via MCP).
--- Generated from 0001..0005. Safe to run once on a fresh project.
+-- Generated from 0001..0006. Safe to run once on a fresh project.
 
 -- LinkedIn Operator — initial schema (plan §4)
 -- All operational tables live in schema `app`. RLS is enabled on every table.
@@ -541,5 +541,14 @@ alter table app.browser_sessions
   alter column storage_state_ciphertext type text using encode(storage_state_ciphertext, 'base64'),
   alter column iv         type text using encode(iv, 'base64'),
   alter column auth_tag   type text using encode(auth_tag, 'base64');
+
+
+-- Add the tables the dashboard watches to the Realtime publication so the UI
+-- updates live (job status as the worker processes, collected people, account
+-- status changes). RLS still applies to Realtime: each user only receives their
+-- own rows.
+alter publication supabase_realtime add table app.jobs_queue;
+alter publication supabase_realtime add table app.people;
+alter publication supabase_realtime add table app.accounts;
 
 
