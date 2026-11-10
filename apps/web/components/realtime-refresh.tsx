@@ -15,7 +15,7 @@ export function RealtimeRefresh() {
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase.channel('dashboard');
-    for (const table of ['jobs_queue', 'accounts', 'people']) {
+    for (const table of ['jobs_queue', 'accounts', 'people', 'command_sessions']) {
       channel.on('postgres_changes', { event: '*', schema: 'app', table }, () => router.refresh());
     }
     channel.subscribe();

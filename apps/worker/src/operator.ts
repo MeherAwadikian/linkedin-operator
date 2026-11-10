@@ -1,4 +1,4 @@
-import { isLinkedInHost, isLinkedInProfileUrl } from '@lo/core';
+import { createProvider, isLinkedInHost, isLinkedInProfileUrl, planCommand } from '@lo/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchSecret } from './browser/credentials.ts';
 import { assertNotBlocked, CheckpointError, readPageSignal } from './browser/guard.ts';
@@ -39,6 +39,8 @@ export class LinkedInOperator {
           return await this.doSearch(job);
         case 'linkedin.collect_feed':
           return await this.doCollectFeed(job);
+        case 'command.plan':
+          return await this.doPlan(job);
         default:
           return { status: 'done', result: { skipped: job.type } };
       }
@@ -133,6 +135,34 @@ export class LinkedInOperator {
       { onConflict: 'user_id,profile_url' },
     );
     return { status: 'done', result: { profile_url: profileUrl, displayName } };
+  }
+
+  /**
+   * Command-console planning: fetch the user's Claude key, turn the instruction
+   * into a validated plan, and write it back to command_sessions for the UI to
+   * preview. No LinkedIn session needed — this only produces a plan.
+   */
+  private async doPlan(job: JobRow): Promise<JobResult> {
+    const sessionId = String(job.payload.session_id ?? '');
+    const instruction = String(job.payload.instruction ?? '');
+    if (!sessionId || !instruction) {
+      return { status: 'failed', error: 'command.plan needs session_id + instruction' };
+    }
+    const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
+    if (!apiKey) {
+      await this.cfg.sb
+        .from('command_sessions')
+        .update({ status: 'error', plan: { error: 'no Anthropic key configured' } })
+        .eq('id', sessionId);
+      return { status: 'failed', error: 'no Anthropic key configured' };
+    }
+    const provider = createProvider({ provider: 'anthropic', apiKey });
+    const { plan } = await planCommand(provider, instruction);
+    await this.cfg.sb
+      .from('command_sessions')
+      .update({ plan, status: 'planned' })
+      .eq('id', sessionId);
+    return { status: 'done', result: { steps: plan.steps.length } };
   }
 
   /**
