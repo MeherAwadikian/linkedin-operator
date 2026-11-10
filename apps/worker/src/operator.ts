@@ -148,12 +148,23 @@ export class LinkedInOperator {
     if (!sessionId || !instruction) {
       return { status: 'failed', error: 'command.plan needs session_id + instruction' };
     }
+    // The worker uses the service_role key (bypasses RLS), so scope every write
+    // to the job's owner explicitly — never trust a payload id alone.
+    const { data: owned } = await this.cfg.sb
+      .from('command_sessions')
+      .select('id')
+      .eq('id', sessionId)
+      .eq('user_id', job.user_id)
+      .maybeSingle();
+    if (!owned) return { status: 'failed', error: 'command session not found for this user' };
+
     const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
     if (!apiKey) {
       await this.cfg.sb
         .from('command_sessions')
         .update({ status: 'error', plan: { error: 'no Anthropic key configured' } })
-        .eq('id', sessionId);
+        .eq('id', sessionId)
+        .eq('user_id', job.user_id);
       return { status: 'failed', error: 'no Anthropic key configured' };
     }
     const provider = createProvider({ provider: 'anthropic', apiKey });
@@ -161,7 +172,8 @@ export class LinkedInOperator {
     await this.cfg.sb
       .from('command_sessions')
       .update({ plan, status: 'planned' })
-      .eq('id', sessionId);
+      .eq('id', sessionId)
+      .eq('user_id', job.user_id);
     return { status: 'done', result: { steps: plan.steps.length } };
   }
 
