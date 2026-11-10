@@ -49,3 +49,8 @@ Thumbs.db
 
 # next.js generated
 apps/web/next-env.d.ts
+
+# opennext/cloudflare build output
+.open-next/
+.wrangler/
+apps/web/.dev.vars
