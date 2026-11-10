@@ -3,6 +3,14 @@ name: Deploy web to Cloudflare
 # Move this file into .github/workflows/ once the repo token has the 'workflow'
 # scope. Builds on Linux (where Next.js standalone symlinks work) and deploys the
 # web app via the OpenNext Cloudflare adapter.
+#
+# BEFORE ACTIVATING — supply-chain hardening (required):
+#   * Pin EVERY `uses:` to a full 40-char commit SHA, keeping the tag as a
+#     comment, e.g. `uses: pnpm/action-setup@d648c2d… # v4.1.0`. Look up the SHA
+#     for the exact release on GitHub; do not trust the moving tag. (Left as tags
+#     here only because the pins must be real, verified SHAs.)
+#   * Enable Dependabot/Renovate to keep the SHAs updated.
+#   * Scope CLOUDFLARE_API_TOKEN to Workers deploy for this account only.
 
 on:
   workflow_dispatch:
@@ -10,15 +18,19 @@ on:
     branches: [main]
     paths: ['apps/web/**', 'packages/**', '.github/workflows/deploy-cloudflare.yml']
 
+# Least privilege: this job only reads the repo (deploy auth is via the CF token).
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4 # pin to a commit SHA before activating
+      - uses: pnpm/action-setup@v4 # pin to a commit SHA before activating
         with:
           version: 10.34.6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4 # pin to a commit SHA before activating
         with:
           node-version: 22
           cache: pnpm
