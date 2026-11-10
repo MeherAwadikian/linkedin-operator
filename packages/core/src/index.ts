@@ -120,3 +120,8 @@ export {
 export type { SealedSecret, SecretKind } from './vault.ts';
 
 export { redactKeys, Redactor } from './redact.ts';
+
+export { scoreJob } from './scoring.ts';
+export type { JobInput, ScoringProfile, SkillAngle, ScorePart, ScoreResult } from './scoring.ts';
+
+export { dedupeKey } from './dedupe.ts';
