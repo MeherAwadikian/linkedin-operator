@@ -25,3 +25,25 @@ export async function enqueueLinkedInLogin(): Promise<void> {
   await supabase.schema('app').from('jobs_queue').insert({ type: 'linkedin.login', payload: {} });
   revalidatePath('/');
 }
+
+/** Enqueue a people-search job. */
+export async function enqueueSearch(formData: FormData): Promise<void> {
+  const query = String(formData.get('query') ?? '').trim();
+  if (!query) return;
+  const supabase = await createClient();
+  await supabase
+    .schema('app')
+    .from('jobs_queue')
+    .insert({ type: 'linkedin.search', payload: { query, max_results: 10 } });
+  revalidatePath('/');
+}
+
+/** Enqueue a feed-collection sweep. */
+export async function enqueueCollectFeed(): Promise<void> {
+  const supabase = await createClient();
+  await supabase
+    .schema('app')
+    .from('jobs_queue')
+    .insert({ type: 'linkedin.collect_feed', payload: { max_items: 20 } });
+  revalidatePath('/');
+}
