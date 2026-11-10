@@ -5,6 +5,7 @@ import { spamCheck, type SpamReport } from './spam.ts';
 export * from './spam.ts';
 export * from './readability.ts';
 export * from './lint.ts';
+export * from './draft.ts';
 
 export interface PersonaCheckResult {
   readability: ReadabilityReport;
