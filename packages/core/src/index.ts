@@ -125,3 +125,21 @@ export { scoreJob } from './scoring.ts';
 export type { JobInput, ScoringProfile, SkillAngle, ScorePart, ScoreResult } from './scoring.ts';
 
 export { dedupeKey } from './dedupe.ts';
+
+export {
+  createProvider,
+  AnthropicProvider,
+  OpenAICompatProvider,
+  splitSystem,
+  DEFAULT_MODELS,
+} from './llm/index.ts';
+export type {
+  LlmProvider,
+  LlmRequest,
+  LlmResponse,
+  LlmUsage,
+  ChatMessage,
+  ChatRole,
+  ProviderName,
+  ProviderConfig,
+} from './llm/index.ts';

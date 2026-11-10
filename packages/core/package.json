@@ -13,11 +13,12 @@
     "lint": "prettier --check \"src/**/*.ts\""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.7.0",
     "@lo/schemas": "workspace:*"
   },
   "devDependencies": {
+    "prettier": "^3.3.3",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.4",
-    "prettier": "^3.3.3"
+    "vitest": "^2.1.4"
   }
 }
