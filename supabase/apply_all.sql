@@ -1,5 +1,5 @@
 -- LinkedIn Operator — full initial DB setup (apply in your SQL editor or via MCP).
--- Generated from 0001..0006. Safe to run once on a fresh project.
+-- Generated from 0001..0007. Safe to run once on a fresh project.
 
 -- LinkedIn Operator — initial schema (plan §4)
 -- All operational tables live in schema `app`. RLS is enabled on every table.
@@ -550,5 +550,14 @@ alter table app.browser_sessions
 alter publication supabase_realtime add table app.jobs_queue;
 alter publication supabase_realtime add table app.people;
 alter publication supabase_realtime add table app.accounts;
+
+
+-- Defense in depth: app.people.profile_url may only ever be a canonical
+-- https://www.linkedin.com/in/ URL. The worker already validates before insert,
+-- but this stops any direct client insert from storing a javascript:/data: or
+-- off-site URL that the UI might render into an href.
+alter table app.people
+  add constraint people_profile_url_linkedin
+  check (profile_url ~ '^https://www\.linkedin\.com/in/');
 
 

@@ -1,4 +1,4 @@
-import { defaultRules } from '@lo/core';
+import { defaultRules, isLinkedInProfileUrl } from '@lo/core';
 import { redirect } from 'next/navigation';
 import { enqueueCollectFeed, enqueueLinkedInLogin, enqueueNoop, enqueueSearch } from './actions.ts';
 import { NavShell } from '../components/nav-shell.tsx';
@@ -45,6 +45,7 @@ export default async function DashboardPage() {
     app
       .from('people')
       .select('id,profile_url,display_name,headline')
+      .eq('user_id', user.id) // RLS already scopes this; explicit for defense in depth
       .order('collected_at', { ascending: false })
       .limit(10),
     app
@@ -138,19 +139,29 @@ export default async function DashboardPage() {
           </p>
         ) : (
           <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
-            {people.map((p) => (
-              <li key={p.id} className="px-4 py-2 text-sm">
-                <a
-                  href={p.profile_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium hover:underline"
-                >
-                  {p.display_name || p.profile_url}
-                </a>
-                {p.headline ? <span className="ml-2 text-neutral-500">{p.headline}</span> : null}
-              </li>
-            ))}
+            {people.map((p) => {
+              // Only render an href for a validated LinkedIn profile URL — never
+              // trust a stored value into an href (javascript:/data: XSS).
+              const safeHref = isLinkedInProfileUrl(p.profile_url) ? p.profile_url : undefined;
+              const label = p.display_name || p.profile_url;
+              return (
+                <li key={p.id} className="px-4 py-2 text-sm">
+                  {safeHref ? (
+                    <a
+                      href={safeHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium hover:underline"
+                    >
+                      {label}
+                    </a>
+                  ) : (
+                    <span className="font-medium">{label}</span>
+                  )}
+                  {p.headline ? <span className="ml-2 text-neutral-500">{p.headline}</span> : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
