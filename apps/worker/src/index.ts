@@ -75,7 +75,9 @@ async function main(): Promise<void> {
   log('worker.operator', { linkedin: operator ? 'ready' : 'disabled', headless: HEADLESS });
 
   const route = (job: JobRow): Promise<JobResult> =>
-    operator && job.type.startsWith('linkedin.') ? operator.handle(job) : handleJob(job);
+    operator && (job.type.startsWith('linkedin.') || job.type.startsWith('command.'))
+      ? operator.handle(job)
+      : handleJob(job);
 
   let beat = 0;
   const timer = setInterval(() => {

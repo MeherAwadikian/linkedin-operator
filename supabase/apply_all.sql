@@ -1,5 +1,5 @@
 -- LinkedIn Operator — full initial DB setup (apply in your SQL editor or via MCP).
--- Generated from 0001..0008. Safe to run once on a fresh project.
+-- Generated from 0001..0009. Safe to run once on a fresh project.
 
 -- LinkedIn Operator — initial schema (plan §4)
 -- All operational tables live in schema `app`. RLS is enabled on every table.
@@ -607,5 +607,11 @@ end $$;
 
 revoke execute on function app.consume_rate_limit(uuid, text, int, int) from public, anon, authenticated;
 grant  execute on function app.consume_rate_limit(uuid, text, int, int) to service_role;
+
+
+-- Live command-console updates: the worker writes the generated plan back to
+-- command_sessions, and the console UI shows it in real time. RLS still scopes
+-- to the owner.
+alter publication supabase_realtime add table app.command_sessions;
 
 
