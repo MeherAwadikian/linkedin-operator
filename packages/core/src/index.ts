@@ -126,6 +126,9 @@ export type { JobInput, ScoringProfile, SkillAngle, ScorePart, ScoreResult } fro
 
 export { dedupeKey } from './dedupe.ts';
 
+export { classifyLinkedInPage, isBlocked } from './linkedin/checkpoint.ts';
+export type { PageState, PageSignal, PageClassification } from './linkedin/checkpoint.ts';
+
 export {
   createProvider,
   AnthropicProvider,
