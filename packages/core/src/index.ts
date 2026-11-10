@@ -109,3 +109,14 @@ export function defaultRules(): Rule[] {
 
 export { RuleSchema } from '@lo/schemas';
 export type { Rule } from '@lo/schemas';
+
+export {
+  loadMasterKey,
+  generateMasterKey,
+  encryptSecret,
+  decryptSecret,
+  secretsEqual,
+} from './vault.ts';
+export type { SealedSecret, SecretKind } from './vault.ts';
+
+export { redactKeys, Redactor } from './redact.ts';
