@@ -29,6 +29,14 @@ generated) automatically with no copy-paste.
 | `migrations/0002_rls.sql` | Enable RLS + owner / authenticated / service-role-only policies |
 | `migrations/0003_seed_defaults.sql` | Default rules + persona + auto-seed trigger on signup |
 
+## Hardening — disable public sign-ups
+
+Every `app` table is owner-scoped (RLS `user_id = auth.uid()`), so a stranger
+who signs up can't read your data. Still, for a single-operator deployment,
+turn **public sign-ups off** so no one can create an account at all:
+**Authentication → Providers → Email → "Allow new users to sign up" = off**
+(create your own user first). This plus RLS is defense-in-depth.
+
 ## After applying — wire the app
 
 Add to `.env` (gitignored; also set in the hosting dashboard):

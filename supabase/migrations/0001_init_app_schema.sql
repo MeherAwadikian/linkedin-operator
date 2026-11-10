@@ -148,6 +148,7 @@ create table app.actions_log (
 
 create table app.postings (
   id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   source      text,
   external_id text,
   title       text,
@@ -157,7 +158,8 @@ create table app.postings (
   salary_text text,
   raw         jsonb,
   first_seen  timestamptz not null default now(),
-  dedupe_hash text not null unique
+  dedupe_hash text not null,
+  unique (user_id, dedupe_hash)
 );
 
 create table app.scores (
@@ -170,6 +172,7 @@ create table app.scores (
 
 create table app.applications (
   id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   posting_id  uuid references app.postings (id) on delete set null,
   status      text not null default 'FOUND' check (status in (
                 'FOUND','SCORED','WAITING_APPROVAL','APPLIED','REJECTED',
@@ -181,6 +184,7 @@ create table app.applications (
 
 create table app.recruiters (
   id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name        text,
   company     text,
   profile_url text,
@@ -190,16 +194,19 @@ create table app.recruiters (
 
 create table app.people (
   id           uuid primary key default gen_random_uuid(),
-  profile_url  text not null unique,
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  profile_url  text not null,
   display_name text,
   headline     text,
   company      text,
   collected_at timestamptz not null default now(),
-  raw          jsonb
+  raw          jsonb,
+  unique (user_id, profile_url)
 );
 
 create table app.conversations (
   id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
   person_id  uuid references app.people (id) on delete set null,
   thread_url text
 );
@@ -215,6 +222,7 @@ create table app.messages (
 
 create table app.drafts (
   id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null default auth.uid() references auth.users (id) on delete cascade,
   kind             text not null check (kind in ('message','comment','post','connect_note')),
   target           jsonb,
   body             text not null default '',
@@ -229,6 +237,7 @@ create table app.drafts (
 
 create table app.automations (
   id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name        text not null,
   trigger     text not null default 'manual' check (trigger in ('manual','schedule')),
   cron        text,
@@ -239,6 +248,7 @@ create table app.automations (
 
 create table app.connectors (
   id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name      text not null,
   kind      text not null check (kind in ('job_board','ats')),
   config    jsonb not null default '{}'::jsonb,
@@ -248,6 +258,7 @@ create table app.connectors (
 
 create table app.repos (
   id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name      text not null,
   url       text,
   kind      text,
@@ -257,6 +268,7 @@ create table app.repos (
 
 create table app.apps (
   id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name      text not null,
   url       text,
   kind      text,
