@@ -1,5 +1,5 @@
 -- LinkedIn Operator — full initial DB setup (apply in your SQL editor or via MCP).
--- Generated from 0001+0002+0003+0004. Safe to run once on a fresh project.
+-- Generated from 0001..0005. Safe to run once on a fresh project.
 
 -- LinkedIn Operator — initial schema (plan §4)
 -- All operational tables live in schema `app`. RLS is enabled on every table.
@@ -524,3 +524,22 @@ grant  execute on function app.complete_job(uuid, text, jsonb, text) to service_
 -- Settings → API → Exposed schemas if the role config is ever reset.
 alter role authenticator set pgrst.db_schemas = 'public, graphql_public, app';
 notify pgrst, 'reload config';
+
+
+-- Store encrypted blobs as base64 TEXT rather than bytea. The vault
+-- (packages/core/vault.ts) already emits base64 strings, and TEXT round-trips
+-- cleanly through PostgREST/supabase-js, whereas bytea does not. The ciphertext
+-- is equally opaque either way. Tables are empty at this point, so the USING
+-- conversions are no-ops.
+
+alter table app.secrets
+  alter column ciphertext type text using encode(ciphertext, 'base64'),
+  alter column iv         type text using encode(iv, 'base64'),
+  alter column auth_tag   type text using encode(auth_tag, 'base64');
+
+alter table app.browser_sessions
+  alter column storage_state_ciphertext type text using encode(storage_state_ciphertext, 'base64'),
+  alter column iv         type text using encode(iv, 'base64'),
+  alter column auth_tag   type text using encode(auth_tag, 'base64');
+
+
