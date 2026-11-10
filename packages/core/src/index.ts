@@ -130,6 +130,16 @@ export { classifyLinkedInPage, isBlocked } from './linkedin/checkpoint.ts';
 export type { PageState, PageSignal, PageClassification } from './linkedin/checkpoint.ts';
 export { isLinkedInProfileUrl, isLinkedInHost } from './linkedin/url.ts';
 
+export { runPersonaChecks, spamCheck, analyzeReadability, personaLint } from './persona/index.ts';
+export type {
+  PersonaCheckResult,
+  SpamReport,
+  SpamFlag,
+  ReadabilityReport,
+  PersonaLintOptions,
+  PersonaLintResult,
+} from './persona/index.ts';
+
 export {
   createProvider,
   AnthropicProvider,
