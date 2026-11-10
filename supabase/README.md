@@ -23,11 +23,11 @@ generated) automatically with no copy-paste.
 
 ## Migrations
 
-| File | Purpose |
-|---|---|
-| `migrations/0001_init_app_schema.sql` | All `app` tables (plan §4) |
-| `migrations/0002_rls.sql` | Enable RLS + owner / authenticated / service-role-only policies |
-| `migrations/0003_seed_defaults.sql` | Default rules + persona + auto-seed trigger on signup |
+| File                                  | Purpose                                                         |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `migrations/0001_init_app_schema.sql` | All `app` tables (plan §4)                                      |
+| `migrations/0002_rls.sql`             | Enable RLS + owner / authenticated / service-role-only policies |
+| `migrations/0003_seed_defaults.sql`   | Default rules + persona + auto-seed trigger on signup           |
 
 ## Hardening — disable public sign-ups
 

@@ -1,29 +1,29 @@
 import { defaultRules } from '@lo/core';
+import { redirect } from 'next/navigation';
+import { NavShell } from '../components/nav-shell.tsx';
+import { createClient } from '../lib/supabase/server.ts';
 
-const NAV = ['Dashboard', 'Approval Queue', 'Command Console', 'Settings'] as const;
+export const dynamic = 'force-dynamic';
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Middleware already gates this, but guard here too (defense in depth).
+  if (!user) redirect('/login');
+
   const rules = defaultRules();
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
-      <header className="mb-10">
-        <h1 className="text-2xl font-semibold">LinkedIn Operator</h1>
+    <NavShell email={user.email ?? 'signed in'}>
+      <header className="mb-8">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Phase 0 scaffold — read-only shell. No LinkedIn connection yet.
+          No LinkedIn account connected yet. Read-only until the worker + credentials are wired.
         </p>
       </header>
-
-      <nav className="mb-10 flex flex-wrap gap-2">
-        {NAV.map((item) => (
-          <span
-            key={item}
-            className="rounded-full border border-neutral-300 px-3 py-1 text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
-          >
-            {item}
-          </span>
-        ))}
-      </nav>
 
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
@@ -40,6 +40,6 @@ export default function DashboardPage() {
           ))}
         </ul>
       </section>
-    </main>
+    </NavShell>
   );
 }
