@@ -6,14 +6,20 @@
  * Later issues add: Supabase job-queue claim loop (#4), secrets vault (#5),
  * Playwright login (#6), checkpoint hard-stop (#7), and the action executor.
  */
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { defaultRules, loadMasterKey, Redactor } from '@lo/core';
 import { startIngestServer } from './ingest.ts';
-import { drainQueue, heartbeat, type JobRow } from './queue.ts';
+import { LinkedInOperator } from './operator.ts';
+import { drainQueue, heartbeat, type JobResult, type JobRow } from './queue.ts';
 import { createServiceClient } from './supabase.ts';
 
 const HEARTBEAT_MS = Number(process.env.WORKER_HEARTBEAT_MS ?? 5000);
 const WORKER_ID = process.env.WORKER_ID ?? 'worker-local';
 const INGEST_PORT = Number(process.env.WORKER_INGEST_PORT ?? 8787);
+const BROWSER_DIR =
+  process.env.WORKER_BROWSER_DIR ?? join(homedir(), '.linkedin-operator', 'browser-profile');
+const HEADLESS = process.env.WORKER_HEADLESS === '1';
 
 /**
  * Process-wide redactor. Decrypted secrets get registered here the moment they
@@ -47,23 +53,29 @@ async function main(): Promise<void> {
     supabase: sb ? 'connected' : 'not configured (local heartbeat only)',
   });
 
-  // Secret-ingest endpoint: only when the DB + master key + shared token exist.
   const masterRaw = process.env.VAULT_MASTER_KEY;
+  const masterKey = masterRaw ? loadMasterKey(masterRaw) : null;
   const ingestToken = process.env.WORKER_INGEST_TOKEN;
-  if (sb && masterRaw && ingestToken) {
-    startIngestServer({
-      sb,
-      masterKey: loadMasterKey(masterRaw),
-      token: ingestToken,
-      port: INGEST_PORT,
-      redactor,
-      log,
-    });
+
+  // Secret-ingest endpoint: only when the DB + master key + shared token exist.
+  if (sb && masterKey && ingestToken) {
+    startIngestServer({ sb, masterKey, token: ingestToken, port: INGEST_PORT, redactor, log });
   } else {
     log('worker.ingest_disabled', {
       reason: 'needs Supabase + VAULT_MASTER_KEY + WORKER_INGEST_TOKEN',
     });
   }
+
+  // LinkedIn operator (Playwright). Handles linkedin.* jobs when the DB + master
+  // key are present; otherwise those jobs fall through to the no-op handler.
+  const operator =
+    sb && masterKey
+      ? new LinkedInOperator({ sb, masterKey, userDataDir: BROWSER_DIR, headless: HEADLESS, log })
+      : null;
+  log('worker.operator', { linkedin: operator ? 'ready' : 'disabled', headless: HEADLESS });
+
+  const route = (job: JobRow): Promise<JobResult> =>
+    operator && job.type.startsWith('linkedin.') ? operator.handle(job) : handleJob(job);
 
   let beat = 0;
   const timer = setInterval(() => {
@@ -79,7 +91,7 @@ async function main(): Promise<void> {
       return;
     }
     await heartbeat(sb, WORKER_ID, { beat: n }, new Date().toISOString());
-    const processed = await drainQueue(sb, WORKER_ID, handleJob);
+    const processed = await drainQueue(sb, WORKER_ID, route);
     log('worker.heartbeat', { beat: n, processed });
   }
 
