@@ -466,6 +466,12 @@ set search_path = app, public
 as $$
 declare j app.jobs_queue;
 begin
+  -- Defense in depth: only the worker's service_role may ever run this, even if
+  -- the grants below are ever misconfigured.
+  if coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'forbidden';
+  end if;
+
   select * into j
   from app.jobs_queue
   where status = 'queued' and run_after <= now()
@@ -494,6 +500,9 @@ security definer
 set search_path = app, public
 as $$
 begin
+  if coalesce(auth.role(), '') <> 'service_role' then
+    raise exception 'forbidden';
+  end if;
   if p_status not in ('done','failed','blocked','cancelled') then
     raise exception 'invalid completion status: %', p_status;
   end if;
@@ -502,9 +511,13 @@ begin
    where id = p_id;
 end $$;
 
--- Only the worker (service_role) may claim/complete.
-revoke execute on function app.claim_next_job(text)                     from anon, authenticated;
-revoke execute on function app.complete_job(uuid, text, jsonb, text)    from anon, authenticated;
+-- Only the worker (service_role) may claim/complete. Revoke from PUBLIC too —
+-- Postgres grants EXECUTE to PUBLIC by default, so revoking anon/authenticated
+-- alone would still leave them access via the PUBLIC grant.
+revoke execute on function app.claim_next_job(text)                  from public, anon, authenticated;
+revoke execute on function app.complete_job(uuid, text, jsonb, text) from public, anon, authenticated;
+grant  execute on function app.claim_next_job(text)                  to service_role;
+grant  execute on function app.complete_job(uuid, text, jsonb, text) to service_role;
 
 -- Expose the `app` schema to PostgREST so the web + worker clients can reach it
 -- (Supabase only exposes public + graphql_public by default). Mirror this under
