@@ -100,6 +100,9 @@ export class LinkedInOperator {
       const login = await this.doLogin(job.user_id);
       if (login.status !== 'done') return login;
     }
+    if (!(await this.withinRateLimit(job.user_id, 'gather_profile'))) {
+      return { status: 'blocked', error: 'rate limit reached for gather_profile' };
+    }
 
     const { page } = await this.ensureSession();
     await page.goto(profileUrl, { waitUntil: 'domcontentloaded' });
@@ -132,6 +135,29 @@ export class LinkedInOperator {
     return { status: 'done', result: { profile_url: profileUrl, displayName } };
   }
 
+  /**
+   * Consume one unit of the rate budget for an action (plan §6). Returns false
+   * when the hour or day window is at its configured limit — the action is then
+   * skipped (blocked), protecting the account from over-activity.
+   */
+  private async withinRateLimit(userId: string, action: string): Promise<boolean> {
+    const { data: rule } = await this.cfg.sb
+      .from('rules')
+      .select('hourly_limit,daily_limit')
+      .eq('user_id', userId)
+      .eq('action_type', action)
+      .maybeSingle();
+    if (!rule) return true;
+    const { data: ok, error } = await this.cfg.sb.rpc('consume_rate_limit', {
+      p_user: userId,
+      p_action: action,
+      p_hourly: rule.hourly_limit as number,
+      p_daily: rule.daily_limit as number,
+    });
+    if (error) throw new Error(`consume_rate_limit failed: ${error.message}`);
+    return ok === true;
+  }
+
   /** Ensure we're logged in; returns a non-done JobResult to short-circuit on failure. */
   private async ensureLoggedIn(userId: string): Promise<JobResult | null> {
     if (this.loggedIn) return null;
@@ -146,6 +172,9 @@ export class LinkedInOperator {
 
     const notReady = await this.ensureLoggedIn(job.user_id);
     if (notReady) return notReady;
+    if (!(await this.withinRateLimit(job.user_id, 'search'))) {
+      return { status: 'blocked', error: 'rate limit reached for search' };
+    }
 
     const url = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(query)}`;
     if (!isLinkedInHost(url)) return { status: 'failed', error: 'search URL failed host check' };
@@ -165,6 +194,9 @@ export class LinkedInOperator {
     const max = Math.min(Number(job.payload.max_items ?? 20), 60);
     const notReady = await this.ensureLoggedIn(job.user_id);
     if (notReady) return notReady;
+    if (!(await this.withinRateLimit(job.user_id, 'collect_feed'))) {
+      return { status: 'blocked', error: 'rate limit reached for collect_feed' };
+    }
 
     const { page } = await this.ensureSession();
     await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded' });
