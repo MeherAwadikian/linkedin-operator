@@ -1,5 +1,11 @@
 import { redirect } from 'next/navigation';
-import { saveLinkedInAccount, saveSecret, setDryRun, updateRule } from './actions.ts';
+import {
+  saveLinkedInAccount,
+  saveSecret,
+  setDryRun,
+  updatePersona,
+  updateRule,
+} from './actions.ts';
 import { NavShell } from '../../components/nav-shell.tsx';
 import { createClient } from '../../lib/supabase/server.ts';
 
@@ -40,14 +46,23 @@ export default async function SettingsPage() {
   if (!user) redirect('/login');
 
   const app = supabase.schema('app');
-  const [accountRes, rulesRes, dryRunRes] = await Promise.all([
+  const [accountRes, rulesRes, dryRunRes, personaRes] = await Promise.all([
     app.from('accounts').select('login_email,status').eq('platform', 'linkedin').maybeSingle(),
     app.from('rules').select('action_type,approval_level,daily_limit,version').order('action_type'),
     app.from('settings').select('value').eq('key', 'dry_run').maybeSingle(),
+    app
+      .from('personas')
+      .select('tone_instructions,banned_openers')
+      .eq('active', true)
+      .maybeSingle(),
   ]);
   const account = accountRes.data;
   const rules = (rulesRes.data ?? []) as RuleRow[];
   const dryRun = Boolean((dryRunRes.data?.value as { enabled?: boolean } | undefined)?.enabled);
+  const personaTone = (personaRes.data?.tone_instructions as string | undefined) ?? '';
+  const personaOpeners = ((personaRes.data?.banned_openers as string[] | undefined) ?? []).join(
+    '\n',
+  );
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
@@ -92,6 +107,43 @@ export default async function SettingsPage() {
           <ApiKeyForm kind="openrouter_key" label="OpenRouter API key (optional)" />
           <ApiKeyForm kind="deepseek_key" label="DeepSeek API key (optional)" />
         </div>
+      </section>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+          Persona
+        </h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          How drafts are written. This shapes tone only — it never implies more history with a
+          contact than is real, and it is not used to evade detection.
+        </p>
+        <form action={updatePersona} className="flex max-w-xl flex-col gap-3">
+          <label className="text-sm">
+            <span className="mb-1 block text-neutral-600 dark:text-neutral-400">
+              Tone instructions
+            </span>
+            <textarea
+              name="tone"
+              rows={4}
+              defaultValue={personaTone}
+              className={`${fieldClass} font-sans`}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-neutral-600 dark:text-neutral-400">
+              Banned openers (one per line)
+            </span>
+            <textarea
+              name="banned_openers"
+              rows={4}
+              defaultValue={personaOpeners}
+              className={`${fieldClass} font-sans`}
+            />
+          </label>
+          <button type="submit" className={`${btnClass} self-start`}>
+            Save persona
+          </button>
+        </form>
       </section>
 
       <section className="mb-10">
