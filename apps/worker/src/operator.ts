@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchSecret } from './browser/credentials.ts';
 import { assertNotBlocked, CheckpointError, readPageSignal } from './browser/guard.ts';
 import { loginToLinkedIn } from './browser/login.ts';
+import { saveSessionBackup } from './browser/session-backup.ts';
 import { launchSession, type Session } from './browser/session.ts';
 import type { JobResult, JobRow } from './queue.ts';
 
@@ -78,6 +79,7 @@ export class LinkedInOperator {
     if (result.status === 'active') {
       this.loggedIn = true;
       await this.setStatus(userId, 'active', null);
+      await this.backupSession(userId);
       return { status: 'done', result: { login: 'active', detail: result.detail } };
     }
     if (result.status === 'checkpoint') {
@@ -294,6 +296,32 @@ export class LinkedInOperator {
       .upsert(rows, { onConflict: 'user_id,profile_url' });
     if (error) throw new Error(`store people failed: ${error.message}`);
     return rows.length;
+  }
+
+  /** Best-effort encrypted backup of the browser session; never fails the login. */
+  private async backupSession(userId: string): Promise<void> {
+    try {
+      if (!this.session) return;
+      const { data: acct } = await this.cfg.sb
+        .from('accounts')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('platform', 'linkedin')
+        .maybeSingle();
+      if (!acct?.id) return;
+      const state = await this.session.context.storageState();
+      await saveSessionBackup(
+        this.cfg.sb,
+        this.cfg.masterKey,
+        acct.id as string,
+        JSON.stringify(state),
+      );
+      this.cfg.log('worker.session_backed_up', { userId });
+    } catch (err) {
+      this.cfg.log('worker.session_backup_failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   private async loginEmail(userId: string): Promise<string | null> {
