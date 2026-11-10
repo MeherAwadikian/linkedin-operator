@@ -18,3 +18,10 @@ export async function enqueueNoop(): Promise<void> {
   await supabase.schema('app').from('jobs_queue').insert({ type: 'noop', payload: {} });
   revalidatePath('/');
 }
+
+/** Enqueue a LinkedIn login/session-refresh job for the worker to run. */
+export async function enqueueLinkedInLogin(): Promise<void> {
+  const supabase = await createClient();
+  await supabase.schema('app').from('jobs_queue').insert({ type: 'linkedin.login', payload: {} });
+  revalidatePath('/');
+}

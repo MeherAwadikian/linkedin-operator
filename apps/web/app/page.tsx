@@ -1,6 +1,6 @@
 import { defaultRules } from '@lo/core';
 import { redirect } from 'next/navigation';
-import { enqueueNoop } from './actions.ts';
+import { enqueueLinkedInLogin, enqueueNoop } from './actions.ts';
 import { NavShell } from '../components/nav-shell.tsx';
 import { createClient } from '../lib/supabase/server.ts';
 
@@ -30,6 +30,15 @@ export default async function DashboardPage() {
     .limit(5);
   const recentJobs = (jobs ?? []) as JobSummary[];
 
+  const { data: account } = await supabase
+    .schema('app')
+    .from('accounts')
+    .select('status,checkpoint_reason')
+    .eq('platform', 'linkedin')
+    .maybeSingle();
+  const accountStatus = (account?.status as string | undefined) ?? 'unknown';
+  const checkpointReason = account?.checkpoint_reason as string | undefined;
+
   const rules = defaultRules();
 
   return (
@@ -41,15 +50,40 @@ export default async function DashboardPage() {
             No LinkedIn account connected yet. Read-only until the worker + credentials are wired.
           </p>
         </div>
-        <form action={enqueueNoop}>
-          <button
-            type="submit"
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-          >
-            Enqueue test job
-          </button>
-        </form>
+        <div className="flex gap-2">
+          <form action={enqueueLinkedInLogin}>
+            <button
+              type="submit"
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            >
+              Connect / re-login LinkedIn
+            </button>
+          </form>
+          <form action={enqueueNoop}>
+            <button
+              type="submit"
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            >
+              Enqueue test job
+            </button>
+          </form>
+        </div>
       </header>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+          LinkedIn account
+        </h2>
+        <p className="text-sm">
+          Status: <span className="font-mono">{accountStatus}</span>
+          {accountStatus === 'checkpoint' && checkpointReason ? (
+            <span className="ml-2 text-amber-600 dark:text-amber-400">
+              — LinkedIn needs you: {checkpointReason}. Resolve it in the worker&apos;s Chrome
+              window, then re-login.
+            </span>
+          ) : null}
+        </p>
+      </section>
 
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
