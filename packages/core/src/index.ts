@@ -115,9 +115,11 @@ export {
   generateMasterKey,
   encryptSecret,
   decryptSecret,
+  encryptBlob,
+  decryptBlob,
   secretsEqual,
 } from './vault.ts';
-export type { SealedSecret, SecretKind } from './vault.ts';
+export type { SealedSecret, SecretKind, SealedBlob } from './vault.ts';
 
 export { redactKeys, Redactor } from './redact.ts';
 

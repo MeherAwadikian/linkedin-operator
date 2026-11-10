@@ -6,6 +6,8 @@ import {
   loadMasterKey,
   secretsEqual,
   type SealedSecret,
+  encryptBlob,
+  decryptBlob,
 } from './vault.ts';
 
 const key = () => loadMasterKey(generateMasterKey());
@@ -61,5 +63,23 @@ describe('vault envelope encryption', () => {
     expect(secretsEqual('abc', 'abc')).toBe(true);
     expect(secretsEqual('abc', 'abd')).toBe(false);
     expect(secretsEqual('abc', 'abcd')).toBe(false);
+  });
+});
+
+describe('encryptBlob / decryptBlob', () => {
+  it('round-trips an arbitrary blob under a context', () => {
+    const k = key();
+    const sealed = encryptBlob('{"cookies":[...]}', k, 'browser_session');
+    expect(sealed.ciphertext).not.toContain('cookies');
+    expect(decryptBlob(sealed, k, 'browser_session')).toBe('{"cookies":[...]}');
+  });
+  it('fails on a context (AAD) mismatch', () => {
+    const k = key();
+    const sealed = encryptBlob('data', k, 'browser_session');
+    expect(() => decryptBlob(sealed, k, 'other_context')).toThrow();
+  });
+  it('fails under a different master key', () => {
+    const sealed = encryptBlob('data', key(), 'browser_session');
+    expect(() => decryptBlob(sealed, key(), 'browser_session')).toThrow();
   });
 });

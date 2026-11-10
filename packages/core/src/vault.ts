@@ -111,6 +111,47 @@ export function decryptSecret(sealed: SealedSecret, masterKey: Buffer): string {
   return plaintext.toString('utf8');
 }
 
+/** A sealed arbitrary blob (e.g. a Playwright storageState backup). base64 fields. */
+export interface SealedBlob {
+  ciphertext: string;
+  iv: string;
+  authTag: string;
+}
+
+/**
+ * Seal an arbitrary string under the master key, with a caller-supplied
+ * `context` string as AAD (integrity-bound, not secret). Used for the encrypted
+ * browser-session backup; same AES-256-GCM guarantees as encryptSecret.
+ */
+export function encryptBlob(plaintext: string, masterKey: Buffer, context: string): SealedBlob {
+  if (masterKey.length !== KEY_BYTES) throw new Error(`master key must be ${KEY_BYTES} bytes`);
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv(ALGO, masterKey, iv, { authTagLength: TAG_BYTES });
+  cipher.setAAD(Buffer.from(context, 'utf8'));
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  return {
+    ciphertext: ciphertext.toString('base64'),
+    iv: iv.toString('base64'),
+    authTag: cipher.getAuthTag().toString('base64'),
+  };
+}
+
+/** Open a sealed blob. Throws on wrong key, tamper, or AAD/context mismatch. */
+export function decryptBlob(sealed: SealedBlob, masterKey: Buffer, context: string): string {
+  if (masterKey.length !== KEY_BYTES) throw new Error(`master key must be ${KEY_BYTES} bytes`);
+  const iv = Buffer.from(sealed.iv, 'base64');
+  const authTag = Buffer.from(sealed.authTag, 'base64');
+  if (iv.length !== IV_BYTES) throw new Error('bad IV length');
+  if (authTag.length !== TAG_BYTES) throw new Error('bad auth tag length');
+  const decipher = createDecipheriv(ALGO, masterKey, iv, { authTagLength: TAG_BYTES });
+  decipher.setAAD(Buffer.from(context, 'utf8'));
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([
+    decipher.update(Buffer.from(sealed.ciphertext, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
 /**
  * Constant-time comparison of two secrets (e.g. to check whether a re-entered
  * value matches without branching on content). Returns false on length
