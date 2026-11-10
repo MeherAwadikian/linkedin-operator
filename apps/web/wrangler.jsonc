@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "linkedin-operator-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-03-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // Non-secret, server-side runtime vars. The web tier reads these to reach the
+  // local worker's ingest endpoint (expose the worker via a cloudflared tunnel
+  // and set WORKER_INGEST_URL to the tunnel hostname).
+  // Secrets (WORKER_INGEST_TOKEN) go via `wrangler secret put`, not here.
+  // Public Supabase vars (NEXT_PUBLIC_*) are inlined at build time, not here.
+  "vars": {
+    "WORKER_INGEST_URL": "https://worker.example.com"
+  }
+}
