@@ -14,6 +14,10 @@
   // Secrets (WORKER_INGEST_TOKEN) go via `wrangler secret put`, not here.
   // Public Supabase vars (NEXT_PUBLIC_*) are inlined at build time, not here.
   "vars": {
-    "WORKER_INGEST_URL": "https://worker.example.com"
+    "WORKER_INGEST_URL": "https://worker.example.com",
+    // No-login mode: the app auto-signs-in as this operator. The matching
+    // OPERATOR_PASSWORD is a Worker secret (set via `wrangler secret put` or the
+    // dashboard), never committed here.
+    "OPERATOR_EMAIL": "krikormher@gmail.com"
   }
 }

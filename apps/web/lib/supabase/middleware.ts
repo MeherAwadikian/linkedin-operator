@@ -1,12 +1,11 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_PREFIXES = ['/login', '/auth'];
-
 /**
- * Refreshes the Supabase session on every request and gates the app: any
- * unauthenticated request to a non-public path is redirected to /login.
- * Must run in middleware so the refreshed auth cookie is written to the response.
+ * Refreshes the Supabase session on every request. In no-login mode it also
+ * auto-signs-in the fixed operator when there is no session, so the app opens
+ * straight to the dashboard. Must run in middleware so the auth cookie is
+ * written to the response.
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });
@@ -38,19 +37,16 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-  const isPublic = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
-
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
-  }
-
-  if (user && pathname.startsWith('/login')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
+  // No-login mode: the app is a single open operator console. When there is no
+  // session, sign in automatically as the fixed operator (credentials come from
+  // env), which writes the auth cookies to the response via the setAll handler
+  // above. There is no login screen; anyone who can reach the URL is the operator.
+  if (!user) {
+    const email = process.env.OPERATOR_EMAIL;
+    const password = process.env.OPERATOR_PASSWORD;
+    if (email && password) {
+      await supabase.auth.signInWithPassword({ email, password });
+    }
   }
 
   return response;
