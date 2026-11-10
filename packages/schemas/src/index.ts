@@ -48,3 +48,20 @@ export const RuleSchema = z.object({
   version: z.number().int().nonnegative().default(1),
 });
 export type Rule = z.infer<typeof RuleSchema>;
+
+/**
+ * One step of a command-console plan (plan §9). `action` is constrained to the
+ * registered action catalog, so a hallucinated action name fails validation
+ * (fail closed) rather than being enqueued.
+ */
+export const ActionPlanStep = z.object({
+  action: ActionType,
+  inputs: z.record(z.unknown()).default({}),
+  rationale: z.string().default(''),
+});
+export type ActionPlanStep = z.infer<typeof ActionPlanStep>;
+
+export const ActionPlanSchema = z.object({
+  steps: z.array(ActionPlanStep),
+});
+export type ActionPlan = z.infer<typeof ActionPlanSchema>;
