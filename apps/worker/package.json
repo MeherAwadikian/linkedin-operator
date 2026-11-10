@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@lo/core": "workspace:*",
-    "@lo/schemas": "workspace:*"
+    "@lo/schemas": "workspace:*",
+    "@supabase/supabase-js": "^2.119.0"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
