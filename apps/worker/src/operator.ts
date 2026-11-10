@@ -1,3 +1,4 @@
+import { isLinkedInHost, isLinkedInProfileUrl } from '@lo/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchSecret } from './browser/credentials.ts';
 import { assertNotBlocked, CheckpointError, readPageSignal } from './browser/guard.ts';
@@ -83,7 +84,14 @@ export class LinkedInOperator {
 
   private async doGatherProfile(job: JobRow): Promise<JobResult> {
     const profileUrl = String(job.payload.profile_url ?? '');
-    if (!profileUrl) return { status: 'failed', error: 'gather_profile needs payload.profile_url' };
+    // SSRF guard: the logged-in browser only ever navigates to vetted LinkedIn
+    // profile URLs. Never goto() a raw payload value.
+    if (!isLinkedInProfileUrl(profileUrl)) {
+      return {
+        status: 'failed',
+        error: 'profile_url must be an https://www.linkedin.com/in/… URL',
+      };
+    }
     if (!this.loggedIn) {
       const login = await this.doLogin(job.user_id);
       if (login.status !== 'done') return login;
@@ -91,6 +99,10 @@ export class LinkedInOperator {
 
     const { page } = await this.ensureSession();
     await page.goto(profileUrl, { waitUntil: 'domcontentloaded' });
+    // A redirect could have taken us off LinkedIn — verify before reading/storing.
+    if (!isLinkedInHost(page.url())) {
+      return { status: 'failed', error: `navigation left LinkedIn: ${page.url()}` };
+    }
     await assertNotBlocked(page); // hard-stop if LinkedIn challenged us
 
     const signal = await readPageSignal(page);
