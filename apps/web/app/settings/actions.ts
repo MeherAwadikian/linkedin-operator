@@ -62,3 +62,52 @@ export async function saveLinkedInAccount(formData: FormData): Promise<void> {
   }
   revalidatePath('/settings');
 }
+
+/** Toggle global dry-run mode (forces all write actions to await approval). */
+export async function setDryRun(formData: FormData): Promise<void> {
+  const enabled = String(formData.get('enabled')) === 'true';
+  const supabase = await createClient();
+  await supabase
+    .schema('app')
+    .from('settings')
+    .upsert({ key: 'dry_run', value: { enabled } }, { onConflict: 'user_id,key' });
+  revalidatePath('/settings');
+}
+
+/** Update one safety rule live; writes a rule_revisions audit row + bumps version. */
+export async function updateRule(formData: FormData): Promise<void> {
+  const actionType = String(formData.get('action_type'));
+  const approvalLevel = Number(formData.get('approval_level'));
+  const dailyLimit = Number(formData.get('daily_limit'));
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  const app = supabase.schema('app');
+
+  const { data: old } = await app
+    .from('rules')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('action_type', actionType)
+    .maybeSingle();
+  if (!old) return;
+
+  const { data: updated } = await app
+    .from('rules')
+    .update({
+      approval_level: approvalLevel,
+      daily_limit: dailyLimit,
+      version: (old.version as number) + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', old.id)
+    .select()
+    .maybeSingle();
+
+  if (updated) {
+    await app.from('rule_revisions').insert({ rule_id: old.id, old, new: updated });
+  }
+  revalidatePath('/settings');
+}

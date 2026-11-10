@@ -1,7 +1,14 @@
 import { redirect } from 'next/navigation';
-import { saveLinkedInAccount, saveSecret } from './actions.ts';
+import { saveLinkedInAccount, saveSecret, setDryRun, updateRule } from './actions.ts';
 import { NavShell } from '../../components/nav-shell.tsx';
 import { createClient } from '../../lib/supabase/server.ts';
+
+interface RuleRow {
+  action_type: string;
+  approval_level: number;
+  daily_limit: number;
+  version: number;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -32,12 +39,15 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: account } = await supabase
-    .schema('app')
-    .from('accounts')
-    .select('login_email,status')
-    .eq('platform', 'linkedin')
-    .maybeSingle();
+  const app = supabase.schema('app');
+  const [accountRes, rulesRes, dryRunRes] = await Promise.all([
+    app.from('accounts').select('login_email,status').eq('platform', 'linkedin').maybeSingle(),
+    app.from('rules').select('action_type,approval_level,daily_limit,version').order('action_type'),
+    app.from('settings').select('value').eq('key', 'dry_run').maybeSingle(),
+  ]);
+  const account = accountRes.data;
+  const rules = (rulesRes.data ?? []) as RuleRow[];
+  const dryRun = Boolean((dryRunRes.data?.value as { enabled?: boolean } | undefined)?.enabled);
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
@@ -73,7 +83,7 @@ export default async function SettingsPage() {
         </form>
       </section>
 
-      <section>
+      <section className="mb-10">
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
           API keys
         </h2>
@@ -82,6 +92,71 @@ export default async function SettingsPage() {
           <ApiKeyForm kind="openrouter_key" label="OpenRouter API key (optional)" />
           <ApiKeyForm kind="deepseek_key" label="DeepSeek API key (optional)" />
         </div>
+      </section>
+
+      <section className="mb-10">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+          Safety mode
+        </h2>
+        <div className="flex items-center gap-3">
+          <span className="text-sm">
+            Dry-run:{' '}
+            <span className={dryRun ? 'font-medium text-amber-600 dark:text-amber-400' : ''}>
+              {dryRun ? 'ON — every write action waits for approval' : 'off'}
+            </span>
+          </span>
+          <form action={setDryRun}>
+            <input type="hidden" name="enabled" value={dryRun ? 'false' : 'true'} />
+            <button type="submit" className={`${btnClass} px-3 py-1.5`}>
+              {dryRun ? 'Turn off' : 'Turn on'}
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+          Safety rules
+        </h2>
+        <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
+          {rules.map((r) => (
+            <li key={r.action_type} className="px-4 py-2">
+              <form action={updateRule} className="flex flex-wrap items-center gap-3 text-sm">
+                <input type="hidden" name="action_type" value={r.action_type} />
+                <span className="w-40 font-mono">{r.action_type}</span>
+                <label className="flex items-center gap-1">
+                  <span className="text-neutral-500">approval</span>
+                  <select
+                    name="approval_level"
+                    defaultValue={r.approval_level}
+                    className="rounded-md border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-700"
+                  >
+                    <option value={0}>L0 auto</option>
+                    <option value={1}>L1 standing</option>
+                    <option value={2}>L2 ask</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-1">
+                  <span className="text-neutral-500">daily</span>
+                  <input
+                    type="number"
+                    name="daily_limit"
+                    defaultValue={r.daily_limit}
+                    min={0}
+                    className="w-20 rounded-md border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-700"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+                >
+                  Save
+                </button>
+                <span className="text-xs text-neutral-400">v{r.version}</span>
+              </form>
+            </li>
+          ))}
+        </ul>
       </section>
     </NavShell>
   );
