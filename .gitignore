@@ -1,0 +1,48 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# env & secrets (NEVER commit)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+vault.master.key
+
+# local candidate data (identity-sensitive — never committed)
+user-profile.yaml
+**/user-profile.yaml
+!**/user-profile.example.yaml
+
+# browser profile / playwright artifacts
+browser-profile/
+.playwright/
+playwright-report/
+test-results/
+trace/
+*.trace.zip
+
+# logs & local db
+logs/
+*.log
+*.sqlite
+*.sqlite-*
+*.db
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
