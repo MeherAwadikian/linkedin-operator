@@ -1,5 +1,13 @@
 import { createProvider, isLinkedInHost, isLinkedInProfileUrl, planCommand } from '@lo/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  commentPost,
+  connectProfile,
+  likePost,
+  postUpdate,
+  sendMessage,
+  type WriteResult,
+} from './browser/actions-write.ts';
 import { fetchSecret } from './browser/credentials.ts';
 import { assertNotBlocked, CheckpointError, readPageSignal } from './browser/guard.ts';
 import { loginToLinkedIn } from './browser/login.ts';
@@ -42,6 +50,12 @@ export class LinkedInOperator {
           return await this.doCollectFeed(job);
         case 'command.plan':
           return await this.doPlan(job);
+        case 'linkedin.like':
+        case 'linkedin.comment':
+        case 'linkedin.post':
+        case 'linkedin.message':
+        case 'linkedin.connect':
+          return await this.doWrite(job);
         default:
           return { status: 'done', result: { skipped: job.type } };
       }
@@ -137,6 +151,148 @@ export class LinkedInOperator {
       { onConflict: 'user_id,profile_url' },
     );
     return { status: 'done', result: { profile_url: profileUrl, displayName } };
+  }
+
+  /**
+   * Phase 3 write actions (like/comment/post/message/connect). By the time a
+   * write job is claimed it has already passed the approval gate (it enqueued as
+   * awaiting_approval → queued only after approval). Here we re-check dry-run,
+   * the rate limit, and the checkpoint guard, fetch the APPROVED draft text, and
+   * perform the (unverified-selector) action, logging the readback result.
+   */
+  private async doWrite(job: JobRow): Promise<JobResult> {
+    const action = job.type.replace('linkedin.', '');
+
+    // Execution-time dry-run re-check: never perform a write while dry-run is on.
+    if (await this.isDryRun(job.user_id)) {
+      return { status: 'blocked', error: `dry-run is on — ${action} not performed` };
+    }
+    const notReady = await this.ensureLoggedIn(job.user_id);
+    if (notReady) return notReady;
+    if (!(await this.withinRateLimit(job.user_id, action))) {
+      return { status: 'blocked', error: `rate limit reached for ${action}` };
+    }
+    const { page } = await this.ensureSession();
+
+    let target = '';
+    let result: WriteResult;
+    try {
+      switch (action) {
+        case 'like': {
+          target = String(job.payload.post_url ?? '');
+          if (!isLinkedInHost(target)) return this.badTarget('post_url');
+          await this.gotoGuarded(page, target);
+          result = await likePost(page);
+          break;
+        }
+        case 'comment': {
+          target = String(job.payload.post_url ?? '');
+          if (!isLinkedInHost(target)) return this.badTarget('post_url');
+          const body = await this.draftBody(job.user_id, job.payload.draft_id);
+          if (!body)
+            return { status: 'failed', error: 'comment needs an approved draft (draft_id)' };
+          await this.gotoGuarded(page, target);
+          result = await commentPost(page, body);
+          break;
+        }
+        case 'post': {
+          target = 'https://www.linkedin.com/feed/';
+          const body = await this.draftBody(job.user_id, job.payload.draft_id);
+          if (!body) return { status: 'failed', error: 'post needs an approved draft (draft_id)' };
+          result = await postUpdate(page, body);
+          break;
+        }
+        case 'message': {
+          target = String(job.payload.thread_url ?? '');
+          if (!isLinkedInHost(target)) return this.badTarget('thread_url');
+          const body = await this.draftBody(job.user_id, job.payload.draft_id);
+          if (!body)
+            return { status: 'failed', error: 'message needs an approved draft (draft_id)' };
+          await this.gotoGuarded(page, target);
+          result = await sendMessage(page, body);
+          break;
+        }
+        case 'connect': {
+          target = String(job.payload.profile_url ?? '');
+          if (!isLinkedInProfileUrl(target)) return this.badTarget('profile_url');
+          const note = job.payload.note_draft_id
+            ? await this.draftBody(job.user_id, job.payload.note_draft_id)
+            : null;
+          await this.gotoGuarded(page, target);
+          result = await connectProfile(page, note ?? undefined);
+          break;
+        }
+        default:
+          return { status: 'failed', error: `unknown write action: ${action}` };
+      }
+    } catch (err) {
+      if (err instanceof CheckpointError) throw err; // handled by handle()
+      return { status: 'failed', error: err instanceof Error ? err.message : String(err) };
+    }
+
+    await this.logAction(
+      job.user_id,
+      action,
+      target,
+      result.detail,
+      job.id,
+      result.ok ? 'done' : 'failed',
+    );
+    return result.ok
+      ? { status: 'done', result: { detail: result.detail } }
+      : { status: 'failed', error: result.detail };
+  }
+
+  private badTarget(field: string): JobResult {
+    return { status: 'failed', error: `${field} is not a valid LinkedIn URL` };
+  }
+
+  private async gotoGuarded(page: import('playwright').Page, url: string): Promise<void> {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    if (!isLinkedInHost(page.url())) throw new Error(`navigation left LinkedIn: ${page.url()}`);
+    await assertNotBlocked(page);
+  }
+
+  private async isDryRun(userId: string): Promise<boolean> {
+    const { data } = await this.cfg.sb
+      .from('settings')
+      .select('value')
+      .eq('user_id', userId)
+      .eq('key', 'dry_run')
+      .maybeSingle();
+    return Boolean((data?.value as { enabled?: boolean } | undefined)?.enabled);
+  }
+
+  /** Fetch an APPROVED draft's body (the text the human signed off on). */
+  private async draftBody(userId: string, draftId: unknown): Promise<string | null> {
+    const id = String(draftId ?? '');
+    if (!id) return null;
+    const { data } = await this.cfg.sb
+      .from('drafts')
+      .select('body')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    const body = ((data?.body as string | undefined) ?? '').trim();
+    return body || null;
+  }
+
+  private async logAction(
+    userId: string,
+    actionType: string,
+    targetUrl: string,
+    summary: string,
+    jobId: string,
+    outcome: string,
+  ): Promise<void> {
+    await this.cfg.sb.from('actions_log').insert({
+      user_id: userId,
+      action_type: actionType,
+      target_url: targetUrl || null,
+      summary,
+      job_id: jobId,
+      outcome,
+    });
   }
 
   /**
