@@ -35,6 +35,10 @@ export class LinkedInOperator {
           return await this.doLogin(job.user_id);
         case 'linkedin.gather_profile':
           return await this.doGatherProfile(job);
+        case 'linkedin.search':
+          return await this.doSearch(job);
+        case 'linkedin.collect_feed':
+          return await this.doCollectFeed(job);
         default:
           return { status: 'done', result: { skipped: job.type } };
       }
@@ -126,6 +130,96 @@ export class LinkedInOperator {
       { onConflict: 'user_id,profile_url' },
     );
     return { status: 'done', result: { profile_url: profileUrl, displayName } };
+  }
+
+  /** Ensure we're logged in; returns a non-done JobResult to short-circuit on failure. */
+  private async ensureLoggedIn(userId: string): Promise<JobResult | null> {
+    if (this.loggedIn) return null;
+    const login = await this.doLogin(userId);
+    return login.status === 'done' ? null : login;
+  }
+
+  private async doSearch(job: JobRow): Promise<JobResult> {
+    const query = String(job.payload.query ?? '').trim();
+    if (!query) return { status: 'failed', error: 'search needs payload.query' };
+    const max = Math.min(Number(job.payload.max_results ?? 10), 50);
+
+    const notReady = await this.ensureLoggedIn(job.user_id);
+    if (notReady) return notReady;
+
+    const url = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(query)}`;
+    if (!isLinkedInHost(url)) return { status: 'failed', error: 'search URL failed host check' };
+
+    const { page } = await this.ensureSession();
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    if (!isLinkedInHost(page.url())) {
+      return { status: 'failed', error: `navigation left LinkedIn: ${page.url()}` };
+    }
+    await assertNotBlocked(page);
+
+    const stored = await this.collectAndStorePeople(page, job.user_id, max);
+    return { status: 'done', result: { query, stored } };
+  }
+
+  private async doCollectFeed(job: JobRow): Promise<JobResult> {
+    const max = Math.min(Number(job.payload.max_items ?? 20), 60);
+    const notReady = await this.ensureLoggedIn(job.user_id);
+    if (notReady) return notReady;
+
+    const { page } = await this.ensureSession();
+    await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded' });
+    if (!isLinkedInHost(page.url())) {
+      return { status: 'failed', error: `navigation left LinkedIn: ${page.url()}` };
+    }
+    await assertNotBlocked(page);
+
+    // Polite, fixed-delay scrolling (not randomized-to-deceive) — just enough to
+    // load more of the feed. Re-check for a checkpoint after each scroll.
+    for (let i = 0; i < 6; i++) {
+      await page.mouse.wheel(0, 2200);
+      await page.waitForTimeout(1200);
+      await assertNotBlocked(page);
+    }
+
+    const stored = await this.collectAndStorePeople(page, job.user_id, max);
+    return { status: 'done', result: { stored } };
+  }
+
+  /** Extract /in/ profile links on the current page and upsert them to `people`. */
+  private async collectAndStorePeople(
+    page: import('playwright').Page,
+    userId: string,
+    max: number,
+  ): Promise<number> {
+    // page.$$eval is Playwright's DOM-query helper — it runs the STATIC function
+    // below in the page context to read anchors. It is not JavaScript eval() and
+    // takes no dynamic/user-supplied code.
+    const anchors = await page.$$eval('a[href*="/in/"]', (els) =>
+      els.map((a) => ({ href: (a as HTMLAnchorElement).href, text: a.textContent?.trim() ?? '' })),
+    );
+
+    const seen = new Set<string>();
+    const rows: Array<Record<string, unknown>> = [];
+    for (const a of anchors) {
+      if (!isLinkedInProfileUrl(a.href)) continue;
+      const canonical = new URL(a.href);
+      const url = `${canonical.origin}${canonical.pathname.replace(/\/$/, '')}`;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      rows.push({
+        user_id: userId,
+        profile_url: url,
+        display_name: a.text || null,
+        collected_at: new Date().toISOString(),
+      });
+      if (rows.length >= max) break;
+    }
+    if (rows.length === 0) return 0;
+    const { error } = await this.cfg.sb
+      .from('people')
+      .upsert(rows, { onConflict: 'user_id,profile_url' });
+    if (error) throw new Error(`store people failed: ${error.message}`);
+    return rows.length;
   }
 
   private async loginEmail(userId: string): Promise<string | null> {
