@@ -6,14 +6,20 @@
  * Later issues add: Supabase job-queue claim loop (#4), secrets vault (#5),
  * Playwright login (#6), checkpoint hard-stop (#7), and the action executor.
  */
-import { defaultRules } from '@lo/core';
+import { defaultRules, Redactor } from '@lo/core';
 
 const HEARTBEAT_MS = Number(process.env.WORKER_HEARTBEAT_MS ?? 5000);
 
+/**
+ * Process-wide redactor. Decrypted secrets get registered here the moment they
+ * are loaded (issue #6), so they can never survive into a log line. Every log
+ * call already strips credential-shaped fields by key name.
+ */
+export const redactor = new Redactor();
+
 function log(event: string, data: Record<string, unknown> = {}): void {
-  // Structured line logging. A redaction layer is added in issue #5 before any
-  // secret ever reaches this path.
-  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...data }));
+  const safe = redactor.redact({ ts: new Date().toISOString(), event, ...data });
+  console.log(JSON.stringify(safe));
 }
 
 async function main(): Promise<void> {
