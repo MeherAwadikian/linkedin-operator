@@ -1,5 +1,18 @@
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+
+/** Read a runtime var/secret. OpenNext does not reliably populate process.env in
+ * middleware, so prefer the Cloudflare binding and fall back to process.env. */
+function runtimeEnv(key: string): string | undefined {
+  try {
+    const v = (getCloudflareContext().env as Record<string, unknown>)[key];
+    if (typeof v === 'string' && v) return v;
+  } catch {
+    // getCloudflareContext unavailable in this context — fall through.
+  }
+  return process.env[key];
+}
 
 /**
  * Refreshes the Supabase session on every request. In no-login mode it also
@@ -43,20 +56,26 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // redirect to the same path carrying those cookies, so the follow-up request is
   // authenticated and the page renders. There is no login screen — anyone who can
   // reach the URL is the operator.
+  let dbg = user ? 'has-user' : 'noop';
   if (!user) {
-    const email = process.env.OPERATOR_EMAIL;
-    const password = process.env.OPERATOR_PASSWORD;
+    const email = runtimeEnv('OPERATOR_EMAIL');
+    const password = runtimeEnv('OPERATOR_PASSWORD');
     if (email && password) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
+      dbg = error ? `signin-err:${error.message}` : 'signed-in';
       if (!error) {
         const dest = request.nextUrl.clone();
         if (dest.pathname.startsWith('/login')) dest.pathname = '/';
         const redirect = NextResponse.redirect(dest);
         for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
+        redirect.headers.set('x-operator-dbg', dbg);
         return redirect;
       }
+    } else {
+      dbg = `no-creds e=${email ? 1 : 0} p=${password ? 1 : 0}`;
     }
   }
 
+  response.headers.set('x-operator-dbg', dbg);
   return response;
 }
