@@ -3,8 +3,31 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '../../lib/supabase/server.ts';
 
-const INGEST_URL = process.env.WORKER_INGEST_URL ?? 'http://127.0.0.1:8787';
 const INGEST_TOKEN = process.env.WORKER_INGEST_TOKEN ?? '';
+
+/**
+ * Resolve the worker's current public URL. The launcher publishes the live tunnel
+ * hostname into app.worker_endpoints on every start, so the web app discovers it
+ * dynamically — no Cloudflare var to re-set when the tunnel changes. Falls back to
+ * the WORKER_INGEST_URL env var, then localhost (same-machine dev).
+ */
+async function resolveIngestUrl(): Promise<string> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .schema('app')
+      .from('worker_endpoints')
+      .select('public_url')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const url = (data?.public_url as string | undefined)?.trim();
+    if (url) return url;
+  } catch {
+    // fall through to env / localhost
+  }
+  return process.env.WORKER_INGEST_URL ?? 'http://127.0.0.1:8787';
+}
 
 /**
  * Forward a just-entered secret to the worker's local ingest endpoint. The web
@@ -12,7 +35,8 @@ const INGEST_TOKEN = process.env.WORKER_INGEST_TOKEN ?? '';
  * does. The plaintext exists only for the duration of this request.
  */
 async function forwardSecret(userId: string, kind: string, value: string): Promise<void> {
-  const res = await fetch(`${INGEST_URL}/store-secret`, {
+  const ingestUrl = await resolveIngestUrl();
+  const res = await fetch(`${ingestUrl}/store-secret`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-ingest-token': INGEST_TOKEN },
     body: JSON.stringify({ userId, kind, value }),
