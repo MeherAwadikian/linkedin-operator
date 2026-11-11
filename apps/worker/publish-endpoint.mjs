@@ -1,6 +1,6 @@
 // Publish the worker's current public tunnel URL into app.worker_endpoints so the
 // web app can reach it without any Cloudflare dashboard edit.
-// Run: node --env-file=apps/worker/.env setup/publish-endpoint.mjs <public_url>
+// Run from apps/worker:  node --env-file=.env publish-endpoint.mjs <public_url>
 import { createClient } from '@supabase/supabase-js';
 
 const url = process.argv[2];
