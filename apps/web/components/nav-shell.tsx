@@ -1,5 +1,3 @@
-import { signOut } from '../app/actions.ts';
-
 const NAV = [
   { label: 'Dashboard', href: '/' },
   { label: 'Stats', href: '/stats' },
@@ -33,14 +31,6 @@ export function NavShell({ email, children }: { email: string; children: React.R
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-neutral-500">{email}</span>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-              >
-                Sign out
-              </button>
-            </form>
           </div>
         </div>
       </header>
