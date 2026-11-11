@@ -38,13 +38,16 @@ if (Test-Path $envFile) {
 
 # --- Supabase reachable ---
 if (Test-Path $envFile) {
-  $url = (Select-String -Path $envFile -Pattern '^NEXT_PUBLIC_SUPABASE_URL=(.+)$').Matches.Groups[1].Value
-  $svc = (Select-String -Path $envFile -Pattern '^SUPABASE_SERVICE_ROLE_KEY=(.+)$').Matches.Groups[1].Value
+  $url = (Select-String -Path $envFile -Pattern '^NEXT_PUBLIC_SUPABASE_URL=(.+)$').Matches.Groups[1].Value.Trim()
+  $svc = (Select-String -Path $envFile -Pattern '^SUPABASE_SERVICE_ROLE_KEY=(.+)$').Matches.Groups[1].Value.Trim()
   if ($url -and $svc) {
-    try {
-      $r = Invoke-WebRequest -Uri "$url/rest/v1/worker_heartbeats?select=id&limit=1" -Headers @{ apikey = $svc; Authorization = "Bearer $svc"; 'Accept-Profile' = 'app' } -TimeoutSec 20 -UseBasicParsing
-      if ($r.StatusCode -eq 200) { Pass "Supabase database reachable" } else { Warn "Supabase returned HTTP $($r.StatusCode)" }
-    } catch { Fail "Supabase unreachable: $($_.Exception.Message)" }
+    # curl.exe (bundled with Windows 10/11) — Invoke-WebRequest mishandles these auth headers.
+    $code = (curl.exe -s -o NUL -w "%{http_code}" --max-time 20 `
+      "$url/rest/v1/worker_heartbeats?select=id&limit=1" `
+      -H "apikey: $svc" -H "Authorization: Bearer $svc" -H "Accept-Profile: app") 2>$null
+    if ($code -eq '200') { Pass "Supabase database reachable" }
+    elseif ($code -eq '000' -or [string]::IsNullOrEmpty($code)) { Fail "Supabase unreachable (network/timeout)" }
+    else { Fail "Supabase returned HTTP $code" }
   }
 }
 
