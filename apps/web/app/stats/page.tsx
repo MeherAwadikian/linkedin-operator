@@ -55,7 +55,6 @@ export default async function StatsPage() {
   const actions = (actionsRes.data ?? []) as Row[];
   const jobs = (jobsRes.data ?? []) as Row[];
   const byAction = tally(actions, 'action_type');
-  const byOutcome = tally(actions, 'outcome');
   const byJobStatus = tally(jobs, 'status');
 
   const sum = (rows: { queued_count?: number }[] | null) =>
@@ -79,10 +78,14 @@ export default async function StatsPage() {
       </p>
 
       <div className="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card label="Actions completed" value={byOutcome.done ?? 0} tone="text-green-600 dark:text-green-400" />
+        <Card label="Completed" value={byJobStatus.done ?? 0} tone="text-green-600 dark:text-green-400" />
         <Card label="Awaiting approval" value={byJobStatus.awaiting_approval ?? 0} tone="text-amber-600 dark:text-amber-400" />
         <Card label="Queued to run" value={byJobStatus.queued ?? 0} />
-        <Card label="Failed / blocked" value={(byOutcome.failed ?? 0) + (byOutcome.blocked ?? 0)} tone="text-neutral-500" />
+        <Card
+          label="Failed / blocked"
+          value={(byJobStatus.failed ?? 0) + (byJobStatus.blocked ?? 0)}
+          tone="text-neutral-500"
+        />
       </div>
 
       <section className="mb-10">
