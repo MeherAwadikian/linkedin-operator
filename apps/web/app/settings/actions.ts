@@ -6,10 +6,28 @@ import { createClient } from '../../lib/supabase/server.ts';
 const INGEST_TOKEN = process.env.WORKER_INGEST_TOKEN ?? '';
 
 /**
+ * Only send secrets to a worker URL we recognize: a cloudflared quick tunnel over
+ * https, or localhost (same-machine). This bounds the endpoint even though only
+ * service_role can write app.worker_endpoints — defense in depth against a poisoned
+ * row routing plaintext secrets off-host.
+ */
+function isAllowedIngestUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if ((u.hostname === '127.0.0.1' || u.hostname === 'localhost') && u.protocol === 'http:') {
+      return true;
+    }
+    return u.protocol === 'https:' && u.hostname.endsWith('.trycloudflare.com');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve the worker's current public URL. The launcher publishes the live tunnel
  * hostname into app.worker_endpoints on every start, so the web app discovers it
  * dynamically — no Cloudflare var to re-set when the tunnel changes. Falls back to
- * the WORKER_INGEST_URL env var, then localhost (same-machine dev).
+ * the WORKER_INGEST_URL env var, then localhost. The chosen URL is validated.
  */
 async function resolveIngestUrl(): Promise<string> {
   try {
@@ -22,11 +40,12 @@ async function resolveIngestUrl(): Promise<string> {
       .limit(1)
       .maybeSingle();
     const url = (data?.public_url as string | undefined)?.trim();
-    if (url) return url;
+    if (url && isAllowedIngestUrl(url)) return url;
   } catch {
     // fall through to env / localhost
   }
-  return process.env.WORKER_INGEST_URL ?? 'http://127.0.0.1:8787';
+  const fallback = process.env.WORKER_INGEST_URL ?? 'http://127.0.0.1:8787';
+  return isAllowedIngestUrl(fallback) ? fallback : 'http://127.0.0.1:8787';
 }
 
 /**
@@ -40,6 +59,8 @@ async function forwardSecret(userId: string, kind: string, value: string): Promi
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-ingest-token': INGEST_TOKEN },
     body: JSON.stringify({ userId, kind, value }),
+    // Never follow a redirect with the plaintext secret in hand.
+    redirect: 'manual',
   });
   if (!res.ok) throw new Error(`worker ingest failed (${res.status})`);
 }
