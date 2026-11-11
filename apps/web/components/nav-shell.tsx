@@ -2,6 +2,7 @@ import { signOut } from '../app/actions.ts';
 
 const NAV = [
   { label: 'Dashboard', href: '/' },
+  { label: 'Stats', href: '/stats' },
   { label: 'Campaigns', href: '/campaigns' },
   { label: 'Email', href: '/email-campaigns' },
   { label: 'Posts', href: '/posts' },
