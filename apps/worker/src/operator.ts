@@ -1,6 +1,7 @@
 import {
   createProvider,
   draftEmail,
+  draftPost,
   isLinkedInHost,
   isLinkedInProfileUrl,
   planCommand,
@@ -64,6 +65,8 @@ export class LinkedInOperator {
           return await this.doEmailCampaign(job);
         case 'email.send':
           return await this.doEmailSend(job);
+        case 'post_campaign.draft':
+          return await this.doPostCampaign(job);
         case 'linkedin.like':
         case 'linkedin.comment':
         case 'linkedin.post':
@@ -520,6 +523,65 @@ export class LinkedInOperator {
     }
     await this.logAction(job.user_id, 'email_send', `mailto:${to}`, result.detail, job.id, 'done');
     return { status: 'done', result: { to, detail: result.detail } };
+  }
+
+  /**
+   * Draft a LinkedIn post from the operator's brief and queue a linkedin.post
+   * action into the APPROVAL queue. Nothing is published until the operator
+   * approves the drafted text.
+   */
+  private async doPostCampaign(job: JobRow): Promise<JobResult> {
+    const postId = String(job.payload.post_campaign_id ?? '');
+    const brief = String(job.payload.brief ?? '').trim();
+    if (!postId || !brief) return { status: 'failed', error: 'post_campaign.draft needs id + brief' };
+
+    const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
+    if (!apiKey) {
+      await this.setPostCampaign(postId, job.user_id, 'failed', '', 'no Anthropic key configured');
+      return { status: 'failed', error: 'no Anthropic key configured' };
+    }
+    const provider = createProvider({ provider: 'anthropic', apiKey });
+
+    let body: string;
+    try {
+      ({ body } = await draftPost(provider, brief));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await this.setPostCampaign(postId, job.user_id, 'failed', '', msg);
+      return { status: 'failed', error: msg };
+    }
+
+    const { data: draft, error: draftErr } = await this.cfg.sb
+      .from('drafts')
+      .insert({ user_id: job.user_id, kind: 'post', body, status: 'approved' })
+      .select('id')
+      .single();
+    if (draftErr || !draft) {
+      await this.setPostCampaign(postId, job.user_id, 'failed', body, draftErr?.message ?? 'draft insert failed');
+      return { status: 'failed', error: draftErr?.message ?? 'draft insert failed' };
+    }
+    await this.cfg.sb.from('jobs_queue').insert({
+      user_id: job.user_id,
+      type: 'linkedin.post',
+      status: 'awaiting_approval',
+      payload: { draft_id: draft.id, post_campaign_id: postId },
+    });
+    await this.setPostCampaign(postId, job.user_id, 'ready', body, null);
+    return { status: 'done', result: { drafted: true } };
+  }
+
+  private async setPostCampaign(
+    id: string,
+    userId: string,
+    status: string,
+    body: string,
+    err: string | null | undefined,
+  ): Promise<void> {
+    await this.cfg.sb
+      .from('post_campaigns')
+      .update({ status, body, last_error: err ?? null, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', userId);
   }
 
   private async gmailAddress(userId: string): Promise<string | null> {
