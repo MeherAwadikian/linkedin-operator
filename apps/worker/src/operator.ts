@@ -1,4 +1,5 @@
 import {
+  classifyLike,
   createProvider,
   draftEmail,
   draftPost,
@@ -67,6 +68,8 @@ export class LinkedInOperator {
           return await this.doEmailSend(job);
         case 'post_campaign.draft':
           return await this.doPostCampaign(job);
+        case 'like_campaign.start':
+          return await this.doLikeCampaign(job);
         case 'linkedin.like':
         case 'linkedin.comment':
         case 'linkedin.post':
@@ -580,6 +583,124 @@ export class LinkedInOperator {
     await this.cfg.sb
       .from('post_campaigns')
       .update({ status, body, last_error: err ?? null, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', userId);
+  }
+
+  /**
+   * Run a like campaign: scan the feed (or a post search), have the AI judge each
+   * post against the operator's criteria, and queue linkedin.like actions for the
+   * matches. Likes run under the standing 'like' rate limit + dry-run gate.
+   */
+  private async doLikeCampaign(job: JobRow): Promise<JobResult> {
+    const campaignId = String(job.payload.like_campaign_id ?? '');
+    const criteria = String(job.payload.criteria ?? '').trim();
+    const source = String(job.payload.source ?? 'feed');
+    const query = String(job.payload.query ?? '').trim();
+    const maxLikes = Math.min(Number(job.payload.max_likes ?? 10), 30);
+    if (!campaignId || !criteria) {
+      return { status: 'failed', error: 'like_campaign.start needs id + criteria' };
+    }
+
+    const notReady = await this.ensureLoggedIn(job.user_id);
+    if (notReady) {
+      await this.setLikeCampaign(campaignId, job.user_id, 'failed', 0, 0, notReady.error);
+      return notReady;
+    }
+    const budget = source === 'search' ? 'search' : 'collect_feed';
+    if (!(await this.withinRateLimit(job.user_id, budget))) {
+      await this.setLikeCampaign(campaignId, job.user_id, 'failed', 0, 0, `rate limit reached for ${budget}`);
+      return { status: 'blocked', error: `rate limit reached for ${budget}` };
+    }
+
+    const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
+    if (!apiKey) {
+      await this.setLikeCampaign(campaignId, job.user_id, 'failed', 0, 0, 'no Anthropic key configured');
+      return { status: 'failed', error: 'no Anthropic key configured' };
+    }
+    const provider = createProvider({ provider: 'anthropic', apiKey });
+
+    const url =
+      source === 'search' && query
+        ? `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent(query)}`
+        : 'https://www.linkedin.com/feed/';
+    if (!isLinkedInHost(url)) return { status: 'failed', error: 'scan URL failed host check' };
+
+    const { page } = await this.ensureSession();
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    if (!isLinkedInHost(page.url())) {
+      return { status: 'failed', error: `navigation left LinkedIn: ${page.url()}` };
+    }
+    await assertNotBlocked(page);
+    for (let i = 0; i < 5; i++) {
+      await page.mouse.wheel(0, 2200);
+      await page.waitForTimeout(1200);
+      await assertNotBlocked(page);
+    }
+
+    const posts = await this.collectFeedPosts(page, 25);
+    let queued = 0;
+    for (const p of posts) {
+      if (queued >= maxLikes) break;
+      let decision;
+      try {
+        decision = await classifyLike(provider, criteria, p.text);
+      } catch {
+        continue;
+      }
+      if (!decision.like) continue;
+      const { error } = await this.cfg.sb.from('jobs_queue').insert({
+        user_id: job.user_id,
+        type: 'linkedin.like',
+        status: 'queued', // 'like' is a standing (L1) action: rate-limited, not per-item approval
+        payload: { post_url: p.url, like_campaign_id: campaignId },
+      });
+      if (!error) queued += 1;
+    }
+
+    await this.setLikeCampaign(campaignId, job.user_id, 'ready', posts.length, queued, null);
+    return { status: 'done', result: { scanned: posts.length, queued } };
+  }
+
+  /** Best-effort extraction of feed posts (permalink + text). Selectors unverified. */
+  private async collectFeedPosts(
+    page: import('playwright').Page,
+    max: number,
+  ): Promise<Array<{ url: string; text: string }>> {
+    const raw = await page.$$eval('[data-urn*="urn:li:activity"]', (els) =>
+      els.map((e) => ({
+        urn: e.getAttribute('data-urn') ?? '',
+        text: (e as HTMLElement).innerText?.slice(0, 2000) ?? '',
+      })),
+    );
+    const seen = new Set<string>();
+    const out: Array<{ url: string; text: string }> = [];
+    for (const r of raw) {
+      if (!/^urn:li:activity:\d+$/.test(r.urn) || seen.has(r.urn)) continue;
+      seen.add(r.urn);
+      out.push({ url: `https://www.linkedin.com/feed/update/${r.urn}`, text: r.text });
+      if (out.length >= max) break;
+    }
+    return out;
+  }
+
+  private async setLikeCampaign(
+    id: string,
+    userId: string,
+    status: string,
+    scanned: number,
+    queued: number,
+    err: string | null | undefined,
+  ): Promise<void> {
+    await this.cfg.sb
+      .from('like_campaigns')
+      .update({
+        status,
+        scanned_count: scanned,
+        queued_count: queued,
+        last_error: err ?? null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id)
       .eq('user_id', userId);
   }

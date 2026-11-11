@@ -80,6 +80,7 @@ async function main(): Promise<void> {
       job.type.startsWith('command.') ||
       job.type.startsWith('campaign.') ||
       job.type.startsWith('post_campaign.') ||
+      job.type.startsWith('like_campaign.') ||
       job.type.startsWith('email'))
       ? operator.handle(job)
       : handleJob(job);

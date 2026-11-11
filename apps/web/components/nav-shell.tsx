@@ -5,6 +5,7 @@ const NAV = [
   { label: 'Campaigns', href: '/campaigns' },
   { label: 'Email', href: '/email-campaigns' },
   { label: 'Posts', href: '/posts' },
+  { label: 'Likes', href: '/likes' },
   { label: 'Approval Queue', href: '/approvals' },
   { label: 'Command Console', href: '/console' },
   { label: 'Settings', href: '/settings' },

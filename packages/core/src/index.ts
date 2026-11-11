@@ -137,6 +137,8 @@ export { draftEmail } from './email/draft.ts';
 export type { EmailRecipient, DraftedEmail } from './email/draft.ts';
 export { draftPost } from './post/draft.ts';
 export type { DraftedPost } from './post/draft.ts';
+export { classifyLike } from './like/classify.ts';
+export type { LikeDecision } from './like/classify.ts';
 
 export { classifyLinkedInPage, isBlocked } from './linkedin/checkpoint.ts';
 export type { PageState, PageSignal, PageClassification } from './linkedin/checkpoint.ts';
