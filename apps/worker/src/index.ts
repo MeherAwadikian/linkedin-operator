@@ -75,7 +75,10 @@ async function main(): Promise<void> {
   log('worker.operator', { linkedin: operator ? 'ready' : 'disabled', headless: HEADLESS });
 
   const route = (job: JobRow): Promise<JobResult> =>
-    operator && (job.type.startsWith('linkedin.') || job.type.startsWith('command.'))
+    operator &&
+    (job.type.startsWith('linkedin.') ||
+      job.type.startsWith('command.') ||
+      job.type.startsWith('campaign.'))
       ? operator.handle(job)
       : handleJob(job);
 

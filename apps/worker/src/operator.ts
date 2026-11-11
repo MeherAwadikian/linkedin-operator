@@ -50,6 +50,8 @@ export class LinkedInOperator {
           return await this.doCollectFeed(job);
         case 'command.plan':
           return await this.doPlan(job);
+        case 'campaign.start':
+          return await this.doCampaign(job);
         case 'linkedin.like':
         case 'linkedin.comment':
         case 'linkedin.post':
@@ -336,6 +338,100 @@ export class LinkedInOperator {
   }
 
   /**
+   * Run a campaign: search LinkedIn for the target, collect matching people, and
+   * queue ONE personalized connection-with-note per person into the APPROVAL queue
+   * (status awaiting_approval). Nothing is sent here — the operator approves each
+   * in the UI, then the normal gated send path runs. No email, no contact scraping.
+   */
+  private async doCampaign(job: JobRow): Promise<JobResult> {
+    const campaignId = String(job.payload.campaign_id ?? '');
+    const query = String(job.payload.query ?? '').trim();
+    const template = String(job.payload.message_template ?? '');
+    const networkType = String(job.payload.network_type ?? 'any');
+    const max = Math.min(Number(job.payload.max_targets ?? 10), 50);
+    if (!campaignId || !query) {
+      return { status: 'failed', error: 'campaign.start needs campaign_id + query' };
+    }
+
+    const notReady = await this.ensureLoggedIn(job.user_id);
+    if (notReady) {
+      await this.setCampaign(campaignId, job.user_id, 'failed', 0, notReady.error);
+      return notReady;
+    }
+    if (!(await this.withinRateLimit(job.user_id, 'search'))) {
+      await this.setCampaign(campaignId, job.user_id, 'failed', 0, 'rate limit reached for search');
+      return { status: 'blocked', error: 'rate limit reached for search' };
+    }
+
+    // Optional network-degree filter (LinkedIn's people-search `network` param).
+    const net =
+      networkType === 'first'
+        ? '&network=%5B%22F%22%5D'
+        : networkType === 'second'
+          ? '&network=%5B%22S%22%5D'
+          : '';
+    const url = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(query)}${net}`;
+    if (!isLinkedInHost(url)) return { status: 'failed', error: 'search URL failed host check' };
+
+    const { page } = await this.ensureSession();
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    if (!isLinkedInHost(page.url())) {
+      return { status: 'failed', error: `navigation left LinkedIn: ${page.url()}` };
+    }
+    await assertNotBlocked(page);
+
+    const people = await this.collectAndStorePeople(page, job.user_id, max);
+
+    let queued = 0;
+    for (const p of people) {
+      const body = this.personalize(template, p.display_name);
+      const { data: draft, error: draftErr } = await this.cfg.sb
+        .from('drafts')
+        .insert({
+          user_id: job.user_id,
+          kind: 'connect_note',
+          target: { profile_url: p.profile_url },
+          body,
+          status: 'approved',
+        })
+        .select('id')
+        .single();
+      if (draftErr || !draft) continue;
+      const { error: jobErr } = await this.cfg.sb.from('jobs_queue').insert({
+        user_id: job.user_id,
+        type: 'linkedin.connect',
+        status: 'awaiting_approval',
+        payload: { profile_url: p.profile_url, note_draft_id: draft.id, campaign_id: campaignId },
+      });
+      if (!jobErr) queued += 1;
+    }
+
+    await this.setCampaign(campaignId, job.user_id, 'ready', queued, null);
+    return { status: 'done', result: { collected: people.length, queued } };
+  }
+
+  /** Replace {name}/{first_name} with the person's first name; cap at the note limit. */
+  private personalize(template: string, displayName: string | null): string {
+    const first = (displayName ?? '').trim().split(/\s+/)[0] || 'there';
+    const base = template || 'Hi {name}, would love to connect.';
+    return base.replace(/\{(name|first_name)\}/gi, first).slice(0, 280);
+  }
+
+  private async setCampaign(
+    id: string,
+    userId: string,
+    status: string,
+    queued: number,
+    err: string | null | undefined,
+  ): Promise<void> {
+    await this.cfg.sb
+      .from('campaigns')
+      .update({ status, queued_count: queued, last_error: err ?? null, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', userId);
+  }
+
+  /**
    * Consume one unit of the rate budget for an action (plan §6). Returns false
    * when the hour or day window is at its configured limit — the action is then
    * skipped (blocked), protecting the account from over-activity.
@@ -387,7 +483,7 @@ export class LinkedInOperator {
     await assertNotBlocked(page);
 
     const stored = await this.collectAndStorePeople(page, job.user_id, max);
-    return { status: 'done', result: { query, stored } };
+    return { status: 'done', result: { query, stored: stored.length } };
   }
 
   private async doCollectFeed(job: JobRow): Promise<JobResult> {
@@ -414,15 +510,16 @@ export class LinkedInOperator {
     }
 
     const stored = await this.collectAndStorePeople(page, job.user_id, max);
-    return { status: 'done', result: { stored } };
+    return { status: 'done', result: { stored: stored.length } };
   }
 
-  /** Extract /in/ profile links on the current page and upsert them to `people`. */
+  /** Extract /in/ profile links on the current page and upsert them to `people`.
+   * Returns the de-duped list that was stored (used by campaigns to queue notes). */
   private async collectAndStorePeople(
     page: import('playwright').Page,
     userId: string,
     max: number,
-  ): Promise<number> {
+  ): Promise<Array<{ profile_url: string; display_name: string | null }>> {
     // page.$$eval is Playwright's DOM-query helper — it runs the STATIC function
     // below in the page context to read anchors. It is not JavaScript eval() and
     // takes no dynamic/user-supplied code.
@@ -446,12 +543,15 @@ export class LinkedInOperator {
       });
       if (rows.length >= max) break;
     }
-    if (rows.length === 0) return 0;
+    if (rows.length === 0) return [];
     const { error } = await this.cfg.sb
       .from('people')
       .upsert(rows, { onConflict: 'user_id,profile_url' });
     if (error) throw new Error(`store people failed: ${error.message}`);
-    return rows.length;
+    return rows.map((r) => ({
+      profile_url: r.profile_url as string,
+      display_name: (r.display_name as string | null) ?? null,
+    }));
   }
 
   /** Best-effort encrypted backup of the browser session; never fails the login. */
