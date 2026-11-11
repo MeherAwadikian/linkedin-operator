@@ -77,7 +77,13 @@ export class LinkedInOperator {
         case 'linkedin.connect':
           return await this.doWrite(job);
         default:
-          return { status: 'done', result: { skipped: job.type } };
+          // Fail-closed: an action with no handler must NOT report success. This
+          // guarantees every queued action either runs via browser automation (a
+          // case above) or fails visibly — never silently fake-succeeds.
+          return {
+            status: 'failed',
+            error: `unsupported action "${job.type}" — no browser-automation handler`,
+          };
       }
     } catch (err) {
       if (err instanceof CheckpointError) {

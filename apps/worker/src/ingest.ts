@@ -72,6 +72,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, cfg: IngestConf
   await storeSecret(cfg.sb, cfg.masterKey, userId, kind as SecretKind, value);
   cfg.log('worker.secret_stored', { userId, kind }); // value is NOT logged
 
+  // Auto-open LinkedIn: the moment the operator saves their LinkedIn password,
+  // queue a login so the worker opens Chrome and logs in automatically (headful,
+  // so any 2FA/checkpoint is visible). No manual "Connect" click needed.
+  if (kind === 'linkedin_password') {
+    await cfg.sb.from('jobs_queue').insert({ user_id: userId, type: 'linkedin.login', payload: {} });
+    cfg.log('worker.auto_login_queued', { userId });
+  }
+
   res.writeHead(204);
   res.end();
 }

@@ -113,13 +113,18 @@ for ($i = 0; $i -lt 30 -and -not $publicUrl; $i++) {
 if ($publicUrl) {
   Say "  tunnel: $publicUrl" 'Green'
   # Publish the URL to the DB so the web app finds the worker automatically.
-  Push-Location $repo
-  node --env-file=apps/worker/.env setup/publish-endpoint.mjs $publicUrl 2>&1 | Out-Null
+  Push-Location (Join-Path $repo 'apps\worker')
+  $pub = node --env-file=.env publish-endpoint.mjs $publicUrl 2>&1
+  $ok = $LASTEXITCODE -eq 0
   Pop-Location
-  Say "  published to app — no Cloudflare edit needed." 'Green'
+  if ($ok) { Say "  published to app — no Cloudflare edit needed." 'Green' }
+  else { Say "  could not publish URL to app: $pub" 'Yellow' }
 } else {
   Say "  tunnel URL not detected yet; check logs\tunnel.err. The worker still runs locally." 'Yellow'
 }
+
+# Self-check: confirm everything is installed and in place.
+& (Join-Path $PSScriptRoot 'verify.ps1')
 
 Start-Process $APP_URL
 Say "`n=== Running ===" 'Cyan'
@@ -127,4 +132,5 @@ Say "App:    $APP_URL (opening in your browser)"
 Say "Worker: running (PID $($worker.Id))   Tunnel: running (PID $($tunnel.Id))"
 Say "Logs:   $logs"
 Say "To stop everything: double-click STOP.bat`n" 'DarkGray'
-Read-Host "Press Enter to close this window (worker + tunnel keep running)"
+try { Read-Host "Press Enter to close this window (worker + tunnel keep running)" | Out-Null } catch {}
+exit 0
