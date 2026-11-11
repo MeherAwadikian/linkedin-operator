@@ -78,7 +78,8 @@ async function main(): Promise<void> {
     operator &&
     (job.type.startsWith('linkedin.') ||
       job.type.startsWith('command.') ||
-      job.type.startsWith('campaign.'))
+      job.type.startsWith('campaign.') ||
+      job.type.startsWith('email'))
       ? operator.handle(job)
       : handleJob(job);
 

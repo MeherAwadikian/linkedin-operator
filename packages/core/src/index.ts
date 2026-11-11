@@ -133,6 +133,8 @@ export type { InitialJobStatus } from './rules/approval.ts';
 
 export { planCommand, buildPlannerSystemPrompt, extractJsonObject } from './console/planner.ts';
 export type { PlanResult } from './console/planner.ts';
+export { draftEmail } from './email/draft.ts';
+export type { EmailRecipient, DraftedEmail } from './email/draft.ts';
 
 export { classifyLinkedInPage, isBlocked } from './linkedin/checkpoint.ts';
 export type { PageState, PageSignal, PageClassification } from './linkedin/checkpoint.ts';

@@ -1,5 +1,13 @@
-import { createProvider, isLinkedInHost, isLinkedInProfileUrl, planCommand } from '@lo/core';
+import {
+  createProvider,
+  draftEmail,
+  isLinkedInHost,
+  isLinkedInProfileUrl,
+  planCommand,
+  type EmailRecipient,
+} from '@lo/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { sendGmail } from './email.ts';
 import {
   commentPost,
   connectProfile,
@@ -52,6 +60,10 @@ export class LinkedInOperator {
           return await this.doPlan(job);
         case 'campaign.start':
           return await this.doCampaign(job);
+        case 'email_campaign.draft':
+          return await this.doEmailCampaign(job);
+        case 'email.send':
+          return await this.doEmailSend(job);
         case 'linkedin.like':
         case 'linkedin.comment':
         case 'linkedin.post':
@@ -426,6 +438,109 @@ export class LinkedInOperator {
   ): Promise<void> {
     await this.cfg.sb
       .from('campaigns')
+      .update({ status, queued_count: queued, last_error: err ?? null, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', userId);
+  }
+
+  /**
+   * Draft an email campaign: for each contact the operator provided, the AI writes
+   * a personalized email from the operator's brief, and each is queued into the
+   * APPROVAL queue (awaiting_approval). Nothing is sent here. No contact is scraped
+   * — the recipient list is supplied by the operator.
+   */
+  private async doEmailCampaign(job: JobRow): Promise<JobResult> {
+    const campaignId = String(job.payload.campaign_id ?? '');
+    const brief = String(job.payload.brief ?? '').trim();
+    const recipients = Array.isArray(job.payload.recipients)
+      ? (job.payload.recipients as EmailRecipient[])
+      : [];
+    if (!campaignId || !brief || recipients.length === 0) {
+      return { status: 'failed', error: 'email_campaign.draft needs campaign_id + brief + recipients' };
+    }
+    const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
+    if (!apiKey) {
+      await this.setEmailCampaign(campaignId, job.user_id, 'failed', 0, 'no Anthropic key configured');
+      return { status: 'failed', error: 'no Anthropic key configured' };
+    }
+    const provider = createProvider({ provider: 'anthropic', apiKey });
+
+    let queued = 0;
+    for (const r of recipients.slice(0, 50)) {
+      if (!r?.email) continue;
+      let drafted;
+      try {
+        drafted = await draftEmail(provider, { brief, recipient: r });
+      } catch {
+        continue; // skip one that failed to draft; keep going
+      }
+      const body = `${drafted.body}\n\n—\nIf you'd prefer not to hear from me, just reply and I'll remove you.`;
+      const { error } = await this.cfg.sb.from('jobs_queue').insert({
+        user_id: job.user_id,
+        type: 'email.send',
+        status: 'awaiting_approval',
+        payload: {
+          to: r.email,
+          name: r.name ?? null,
+          subject: drafted.subject,
+          body,
+          campaign_id: campaignId,
+        },
+      });
+      if (!error) queued += 1;
+    }
+    await this.setEmailCampaign(campaignId, job.user_id, 'ready', queued, null);
+    return { status: 'done', result: { queued } };
+  }
+
+  /** Send one approved email from the operator's Gmail. Re-checks dry-run + rate limit. */
+  private async doEmailSend(job: JobRow): Promise<JobResult> {
+    const to = String(job.payload.to ?? '');
+    const subject = String(job.payload.subject ?? '');
+    const body = String(job.payload.body ?? '');
+    if (!to || !subject || !body) return { status: 'failed', error: 'email.send needs to/subject/body' };
+    if (await this.isDryRun(job.user_id)) {
+      return { status: 'blocked', error: 'dry-run is on — email not sent' };
+    }
+    if (!(await this.withinRateLimit(job.user_id, 'email_send'))) {
+      return { status: 'blocked', error: 'rate limit reached for email_send' };
+    }
+    const [address, password] = await Promise.all([
+      this.gmailAddress(job.user_id),
+      fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'gmail_password'),
+    ]);
+    if (!address || !password) {
+      return { status: 'failed', error: 'Gmail address and/or app password not configured' };
+    }
+    let result;
+    try {
+      result = await sendGmail({ user: address, pass: password, to, subject, body });
+    } catch (err) {
+      return { status: 'failed', error: err instanceof Error ? err.message : String(err) };
+    }
+    await this.logAction(job.user_id, 'email_send', `mailto:${to}`, result.detail, job.id, 'done');
+    return { status: 'done', result: { to, detail: result.detail } };
+  }
+
+  private async gmailAddress(userId: string): Promise<string | null> {
+    const { data } = await this.cfg.sb
+      .from('settings')
+      .select('value')
+      .eq('user_id', userId)
+      .eq('key', 'gmail_address')
+      .maybeSingle();
+    return ((data?.value as { address?: string } | undefined)?.address ?? null) || null;
+  }
+
+  private async setEmailCampaign(
+    id: string,
+    userId: string,
+    status: string,
+    queued: number,
+    err: string | null | undefined,
+  ): Promise<void> {
+    await this.cfg.sb
+      .from('email_campaigns')
       .update({ status, queued_count: queued, last_error: err ?? null, updated_at: new Date().toISOString() })
       .eq('id', id)
       .eq('user_id', userId);
