@@ -56,26 +56,20 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // redirect to the same path carrying those cookies, so the follow-up request is
   // authenticated and the page renders. There is no login screen — anyone who can
   // reach the URL is the operator.
-  let dbg = user ? 'has-user' : 'noop';
   if (!user) {
     const email = runtimeEnv('OPERATOR_EMAIL');
     const password = runtimeEnv('OPERATOR_PASSWORD');
     if (email && password) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      dbg = error ? `signin-err:${error.message}` : 'signed-in';
       if (!error) {
         const dest = request.nextUrl.clone();
         if (dest.pathname.startsWith('/login')) dest.pathname = '/';
         const redirect = NextResponse.redirect(dest);
         for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
-        redirect.headers.set('x-operator-dbg', dbg);
         return redirect;
       }
-    } else {
-      dbg = `no-creds e=${email ? 1 : 0} p=${password ? 1 : 0}`;
     }
   }
 
-  response.headers.set('x-operator-dbg', dbg);
   return response;
 }
