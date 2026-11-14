@@ -1,4 +1,4 @@
-# LinkedIn Operator — one-click launcher.
+# LinkedIn Operator - one-click launcher.
 # Installs prerequisites (Node, pnpm, cloudflared) if missing, installs deps,
 # starts the worker + tunnel, publishes the tunnel URL to the DB (so no Cloudflare
 # edit is needed), and opens the app. Re-runnable any time.
@@ -23,7 +23,7 @@ function Winget-Install($id) {
   }
 }
 
-Say "`n=== LinkedIn Operator — setup & launch ===`n" 'Cyan'
+Say "`n=== LinkedIn Operator - setup & launch ===`n" 'Cyan'
 
 # --- 1. Node 22+ ---
 Say "[1/6] Node.js..."
@@ -59,7 +59,7 @@ Say "  cloudflared ready" 'Green'
 # --- 4. Chrome (needed by the worker's Playwright) ---
 Say "[4/6] Google Chrome..."
 $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe","${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe","$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $chrome) { Say "  Chrome not detected — install it from https://www.google.com/chrome before using LinkedIn actions." 'Yellow' } else { Say "  Chrome found" 'Green' }
+if (-not $chrome) { Say "  Chrome not detected - install it from https://www.google.com/chrome before using LinkedIn actions." 'Yellow' } else { Say "  Chrome found" 'Green' }
 
 # --- 5. Install dependencies ---
 Say "[5/6] Installing dependencies (first run can take a few minutes)..."
@@ -117,7 +117,7 @@ if ($publicUrl) {
   $pub = node --env-file=.env publish-endpoint.mjs $publicUrl 2>&1
   $ok = $LASTEXITCODE -eq 0
   Pop-Location
-  if ($ok) { Say "  published to app — no Cloudflare edit needed." 'Green' }
+  if ($ok) { Say "  published to app - no Cloudflare edit needed." 'Green' }
   else { Say "  could not publish URL to app: $pub" 'Yellow' }
 } else {
   Say "  tunnel URL not detected yet; check logs\tunnel.err. The worker still runs locally." 'Yellow'
