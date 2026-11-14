@@ -39,11 +39,12 @@ export default async function EmailCampaignsPage() {
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
-      <RealtimeRefresh />
+      <RealtimeRefresh tables={['email_campaigns']} />
       <h1 className="mb-1 text-2xl font-semibold">Email campaigns</h1>
       <p className="mb-6 max-w-2xl text-sm text-neutral-500">
-        Give a brief and paste a list of contacts <strong>you already have a reason to email</strong>
-        . The AI drafts a personalized email for each, and every one lands in the{' '}
+        Give a brief and paste a list of contacts{' '}
+        <strong>you already have a reason to email</strong>. The AI drafts a personalized email for
+        each, and every one lands in the{' '}
         <a href="/approvals" className="underline">
           Approval Queue
         </a>{' '}
@@ -99,7 +100,10 @@ export default async function EmailCampaignsPage() {
         ) : (
           <ul className="flex flex-col gap-3">
             {campaigns.map((c) => (
-              <li key={c.id} className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+              <li
+                key={c.id}
+                className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">{c.name}</p>

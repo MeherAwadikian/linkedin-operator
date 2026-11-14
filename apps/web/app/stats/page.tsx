@@ -71,15 +71,25 @@ export default async function StatsPage() {
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
-      <RealtimeRefresh />
+      <RealtimeRefresh
+        tables={['jobs_queue', 'campaigns', 'email_campaigns', 'post_campaigns', 'like_campaigns']}
+      />
       <h1 className="mb-1 text-2xl font-semibold">Statistics</h1>
       <p className="mb-8 text-sm text-neutral-500">
         Activity across all campaigns. Counts reflect what has actually run and what is queued.
       </p>
 
       <div className="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card label="Completed" value={byJobStatus.done ?? 0} tone="text-green-600 dark:text-green-400" />
-        <Card label="Awaiting approval" value={byJobStatus.awaiting_approval ?? 0} tone="text-amber-600 dark:text-amber-400" />
+        <Card
+          label="Completed"
+          value={byJobStatus.done ?? 0}
+          tone="text-green-600 dark:text-green-400"
+        />
+        <Card
+          label="Awaiting approval"
+          value={byJobStatus.awaiting_approval ?? 0}
+          tone="text-amber-600 dark:text-amber-400"
+        />
         <Card label="Queued to run" value={byJobStatus.queued ?? 0} />
         <Card
           label="Failed / blocked"
@@ -99,7 +109,9 @@ export default async function StatsPage() {
             {actionRows.map((k) => (
               <li key={k} className="flex items-center justify-between px-4 py-2 text-sm">
                 <span>{ACTION_LABEL[k] ?? k}</span>
-                <span className="font-mono text-neutral-600 dark:text-neutral-300">{byAction[k]}</span>
+                <span className="font-mono text-neutral-600 dark:text-neutral-300">
+                  {byAction[k]}
+                </span>
               </li>
             ))}
           </ul>
@@ -118,7 +130,10 @@ export default async function StatsPage() {
                 .map(([s, n]) => `${n} ${s}`)
                 .join(', ') || 'none';
             return (
-              <li key={b.label} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
+              <li
+                key={b.label}
+                className="flex items-center justify-between gap-3 px-4 py-2 text-sm"
+              >
                 <span>{b.label}</span>
                 <span className="text-right text-xs text-neutral-500">
                   {b.rows.length} total · {statusStr}

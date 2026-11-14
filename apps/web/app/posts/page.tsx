@@ -37,7 +37,7 @@ export default async function PostsPage() {
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
-      <RealtimeRefresh />
+      <RealtimeRefresh tables={['post_campaigns']} />
       <h1 className="mb-1 text-2xl font-semibold">Posts</h1>
       <p className="mb-6 max-w-2xl text-sm text-neutral-500">
         Describe the post you want — the AI writes it, and the draft goes to the{' '}
@@ -79,7 +79,10 @@ export default async function PostsPage() {
         ) : (
           <ul className="flex flex-col gap-3">
             {posts.map((p) => (
-              <li key={p.id} className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+              <li
+                key={p.id}
+                className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
+              >
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <p className="text-sm text-neutral-500">{p.brief}</p>
                   <span className="shrink-0 text-xs text-neutral-500">

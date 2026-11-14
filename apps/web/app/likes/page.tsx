@@ -34,14 +34,16 @@ export default async function LikesPage() {
   const { data } = await supabase
     .schema('app')
     .from('like_campaigns')
-    .select('id,criteria,source,query,max_likes,status,scanned_count,queued_count,last_error,created_at')
+    .select(
+      'id,criteria,source,query,max_likes,status,scanned_count,queued_count,last_error,created_at',
+    )
     .order('created_at', { ascending: false })
     .limit(25);
   const campaigns = (data ?? []) as LikeRow[];
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
-      <RealtimeRefresh />
+      <RealtimeRefresh tables={['like_campaigns']} />
       <h1 className="mb-1 text-2xl font-semibold">Like campaigns</h1>
       <p className="mb-6 max-w-2xl text-sm text-neutral-500">
         Tell the AI what kinds of posts to like. The worker scans your feed (or a post search), the
@@ -82,7 +84,14 @@ export default async function LikesPage() {
             </label>
             <label className="w-28 text-sm">
               <span className="mb-1 block text-neutral-600 dark:text-neutral-400">Max likes</span>
-              <input name="max_likes" type="number" min={1} max={30} defaultValue={10} className={field} />
+              <input
+                name="max_likes"
+                type="number"
+                min={1}
+                max={30}
+                defaultValue={10}
+                className={field}
+              />
             </label>
           </div>
           <button type="submit" className={`${btn} self-start`}>
@@ -100,7 +109,10 @@ export default async function LikesPage() {
         ) : (
           <ul className="flex flex-col gap-3">
             {campaigns.map((c) => (
-              <li key={c.id} className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+              <li
+                key={c.id}
+                className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm">{c.criteria}</p>
@@ -116,7 +128,9 @@ export default async function LikesPage() {
                         · {c.queued_count} liked of {c.scanned_count} scanned
                       </span>
                     ) : c.status === 'ready' ? (
-                      <span className="ml-1 text-neutral-400">· {c.scanned_count} scanned, 0 matched</span>
+                      <span className="ml-1 text-neutral-400">
+                        · {c.scanned_count} scanned, 0 matched
+                      </span>
                     ) : null}
                   </span>
                 </div>

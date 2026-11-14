@@ -40,14 +40,16 @@ export default async function CampaignsPage() {
   const { data } = await supabase
     .schema('app')
     .from('campaigns')
-    .select('id,name,network_type,query,message_template,max_targets,status,queued_count,last_error,created_at')
+    .select(
+      'id,name,network_type,query,message_template,max_targets,status,queued_count,last_error,created_at',
+    )
     .order('created_at', { ascending: false })
     .limit(25);
   const campaigns = (data ?? []) as CampaignRow[];
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
-      <RealtimeRefresh />
+      <RealtimeRefresh tables={['campaigns']} />
       <h1 className="mb-1 text-2xl font-semibold">Campaigns</h1>
       <p className="mb-8 max-w-2xl text-sm text-neutral-500">
         Pick who to reach and what to say. The worker searches LinkedIn, collects matching people,
@@ -79,7 +81,14 @@ export default async function CampaignsPage() {
             </label>
             <label className="w-32 text-sm">
               <span className="mb-1 block text-neutral-600 dark:text-neutral-400">Max targets</span>
-              <input name="max_targets" type="number" min={1} max={50} defaultValue={10} className={field} />
+              <input
+                name="max_targets"
+                type="number"
+                min={1}
+                max={50}
+                defaultValue={10}
+                className={field}
+              />
             </label>
           </div>
           <label className="text-sm">
@@ -115,7 +124,10 @@ export default async function CampaignsPage() {
         ) : (
           <ul className="flex flex-col gap-3">
             {campaigns.map((c) => (
-              <li key={c.id} className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+              <li
+                key={c.id}
+                className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">{c.name}</p>

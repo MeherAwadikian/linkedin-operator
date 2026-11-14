@@ -66,7 +66,7 @@ export default async function DashboardPage() {
 
   return (
     <NavShell email={user.email ?? 'signed in'}>
-      <RealtimeRefresh />
+      <RealtimeRefresh tables={['jobs_queue', 'accounts', 'people']} />
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Dashboard</h1>
