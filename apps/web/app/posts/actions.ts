@@ -5,7 +5,7 @@ import { createClient } from '../../lib/supabase/server.ts';
 
 /**
  * Create a post campaign and enqueue the drafting job. The worker drafts the post
- * from the brief and queues a linkedin.post action into the Approval Queue —
+ * from the brief and queues a linkedin.post action into the Approval Queue;
  * nothing is published until the operator approves the drafted text.
  */
 export async function createPost(formData: FormData): Promise<void> {

@@ -71,7 +71,7 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold">Dashboard</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Phase 1 — read-only. Worker:{' '}
+            Phase 1: read-only. Worker:{' '}
             <span
               className={workerFresh ? 'text-green-600 dark:text-green-400' : 'text-neutral-500'}
             >
@@ -106,7 +106,7 @@ export default async function DashboardPage() {
           Status: <span className="font-mono">{accountStatus}</span>
           {accountStatus === 'checkpoint' && checkpointReason ? (
             <span className="ml-2 text-amber-600 dark:text-amber-400">
-              — LinkedIn needs you: {checkpointReason}. Resolve it in the worker&apos;s Chrome
+              (LinkedIn needs you: {checkpointReason}). Resolve it in the worker&apos;s Chrome
               window, then re-login.
             </span>
           ) : null}
@@ -140,7 +140,7 @@ export default async function DashboardPage() {
         ) : (
           <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
             {people.map((p) => {
-              // Only render an href for a validated LinkedIn profile URL — never
+              // Only render an href for a validated LinkedIn profile URL; never
               // trust a stored value into an href (javascript:/data: XSS).
               const safeHref = isLinkedInProfileUrl(p.profile_url) ? p.profile_url : undefined;
               const label = p.display_name || p.profile_url;

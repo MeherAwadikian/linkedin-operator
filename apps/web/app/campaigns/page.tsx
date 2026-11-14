@@ -68,7 +68,7 @@ export default async function CampaignsPage() {
         <form action={createCampaign} className="flex max-w-xl flex-col gap-3">
           <label className="text-sm">
             <span className="mb-1 block text-neutral-600 dark:text-neutral-400">Campaign name</span>
-            <input name="name" className={field} placeholder="AI founders — UAE" />
+            <input name="name" className={field} placeholder="AI founders, UAE" />
           </label>
           <div className="flex gap-3">
             <label className="flex-1 text-sm">
@@ -99,14 +99,14 @@ export default async function CampaignsPage() {
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-neutral-600 dark:text-neutral-400">
-              Message — use <span className="font-mono">{'{name}'}</span> for their first name (max
+              Message: use <span className="font-mono">{'{name}'}</span> for their first name (max
               280 chars)
             </span>
             <textarea
               name="message_template"
               rows={3}
               className={`${field} font-sans`}
-              placeholder="Hi {name}, I help teams automate outreach — would love to connect."
+              placeholder="Hi {name}, I help teams automate outreach, would love to connect."
             />
           </label>
           <button type="submit" className={`${btn} self-start`}>

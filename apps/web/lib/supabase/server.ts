@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 /**
  * Server-side Supabase client bound to the request's cookies. Use in Server
  * Components, Route Handlers, and Server Actions. In a plain Server Component
- * the `setAll` write may throw (read-only context) — the middleware is what
+ * the `setAll` write may throw (read-only context); the middleware is what
  * actually refreshes the session cookie, so swallowing it here is correct.
  */
 export async function createClient() {
@@ -23,7 +23,7 @@ export async function createClient() {
               cookieStore.set(name, value, options);
             }
           } catch {
-            // Called from a Server Component — safe to ignore (middleware refreshes).
+            // Called from a Server Component; safe to ignore (middleware refreshes).
           }
         },
       },

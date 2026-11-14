@@ -49,7 +49,7 @@ export default async function EmailCampaignsPage() {
           Approval Queue
         </a>{' '}
         for you to review before it sends from your Gmail. Sends are rate-limited and include an
-        opt-out line. Don&apos;t paste addresses you scraped or bought without consent — that&apos;s
+        opt-out line. Don&apos;t paste addresses you scraped or bought without consent; that&apos;s
         spam and will get your account blocked.
       </p>
 
@@ -60,11 +60,11 @@ export default async function EmailCampaignsPage() {
         <form action={createEmailCampaign} className="flex max-w-2xl flex-col gap-3">
           <label className="text-sm">
             <span className="mb-1 block text-neutral-600 dark:text-neutral-400">Campaign name</span>
-            <input name="name" className={field} placeholder="Logistics intro — November" />
+            <input name="name" className={field} placeholder="Logistics intro, November" />
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-neutral-600 dark:text-neutral-400">
-              Your brief — what the email should say (the AI writes it per contact)
+              Your brief: what the email should say (the AI writes it per contact)
             </span>
             <textarea
               name="brief"
@@ -75,7 +75,7 @@ export default async function EmailCampaignsPage() {
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-neutral-600 dark:text-neutral-400">
-              Contacts — one per line as <span className="font-mono">email, name, company</span>{' '}
+              Contacts: one per line as <span className="font-mono">email, name, company</span>{' '}
               (name &amp; company optional, up to 50)
             </span>
             <textarea

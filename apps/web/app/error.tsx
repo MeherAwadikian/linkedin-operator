@@ -8,7 +8,13 @@ import { useEffect } from 'react';
  * deploy). A full reload fetches a matching bundle, so we offer that prominently
  * instead of showing Next.js's raw error screen.
  */
-export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   useEffect(() => {
     // eslint-disable-next-line no-console
     console.error('app error boundary:', error);

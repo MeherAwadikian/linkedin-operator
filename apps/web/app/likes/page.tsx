@@ -47,7 +47,7 @@ export default async function LikesPage() {
       <h1 className="mb-1 text-2xl font-semibold">Like campaigns</h1>
       <p className="mb-6 max-w-2xl text-sm text-neutral-500">
         Tell the AI what kinds of posts to like. The worker scans your feed (or a post search), the
-        AI judges each post against your criteria, and matching posts are liked — conservatively,
+        AI judges each post against your criteria, and matching posts are liked: conservatively,
         rate-limited, and skipped entirely while dry-run is on. The AI avoids political, sensitive,
         or spammy posts even if they match.
       </p>
@@ -65,7 +65,7 @@ export default async function LikesPage() {
               name="criteria"
               rows={3}
               className={`${field} font-sans`}
-              placeholder="Posts about AI automation, operations efficiency, or logistics tech — practical, non-promotional ones from founders and operators."
+              placeholder="Posts about AI automation, operations efficiency, or logistics tech; practical, non-promotional ones from founders and operators."
             />
           </label>
           <div className="flex flex-wrap gap-3">

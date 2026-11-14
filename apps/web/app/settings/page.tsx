@@ -84,9 +84,7 @@ export default async function SettingsPage() {
         <p className="mb-3 text-xs text-neutral-500">Status: {account?.status ?? 'unknown'}</p>
         <form action={saveLinkedInAccount} className="flex max-w-md flex-col gap-3">
           <label className="text-sm">
-            <span className="mb-1 block text-neutral-600 dark:text-neutral-400">
-              Email / login
-            </span>
+            <span className="mb-1 block text-neutral-600 dark:text-neutral-400">Email / login</span>
             <input
               type="email"
               name="email"
@@ -124,7 +122,7 @@ export default async function SettingsPage() {
         </h2>
         <p className="mb-3 text-xs text-neutral-500">
           Used by your worker to open Gmail in the browser (e.g. for verification steps). The
-          password is sent to your local worker and encrypted there — never stored in this UI. Tip:
+          password is sent to your local worker and encrypted there, never stored in this UI. Tip:
           if your Google account has 2-step verification, use an{' '}
           <span className="font-medium">app password</span> here.
         </p>
@@ -165,7 +163,7 @@ export default async function SettingsPage() {
           Persona
         </h2>
         <p className="mb-3 text-xs text-neutral-500">
-          How drafts are written. This shapes tone only — it never implies more history with a
+          How drafts are written. This shapes tone only; it never implies more history with a
           contact than is real, and it is not used to evade detection.
         </p>
         <form action={updatePersona} className="flex max-w-xl flex-col gap-3">
@@ -205,7 +203,7 @@ export default async function SettingsPage() {
           <span className="text-sm">
             Dry-run:{' '}
             <span className={dryRun ? 'font-medium text-amber-600 dark:text-amber-400' : ''}>
-              {dryRun ? 'ON — every write action waits for approval' : 'off'}
+              {dryRun ? 'ON (every write action waits for approval)' : 'off'}
             </span>
           </span>
           <form action={setDryRun}>

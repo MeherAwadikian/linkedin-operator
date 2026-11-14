@@ -9,7 +9,7 @@ interface Recipient {
   company?: string;
 }
 
-// Very small email sanity check — we are not validating deliverability, just that
+// Very small email sanity check: we are not validating deliverability, just that
 // the operator pasted something address-shaped.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -30,7 +30,7 @@ function parseRecipients(raw: string): Recipient[] {
 
 /**
  * Create an email campaign and enqueue the drafting job. The worker drafts a
- * personalized email per contact and queues each into the Approval Queue —
+ * personalized email per contact and queues each into the Approval Queue;
  * nothing sends until the operator approves it. Recipients are supplied by the
  * operator (their own contacts); nothing is scraped.
  */

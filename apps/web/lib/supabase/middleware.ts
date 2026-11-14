@@ -9,7 +9,7 @@ function runtimeEnv(key: string): string | undefined {
     const v = (getCloudflareContext().env as Record<string, unknown>)[key];
     if (typeof v === 'string' && v) return v;
   } catch {
-    // getCloudflareContext unavailable in this context — fall through.
+    // getCloudflareContext unavailable in this context; fall through.
   }
   return process.env[key];
 }
@@ -88,7 +88,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // session, sign in automatically as the fixed operator (credentials from env).
   // signInWithPassword writes the auth cookies to `response` via setAll; we then
   // redirect to the same path carrying those cookies, so the follow-up request is
-  // authenticated and the page renders. There is no login screen — anyone who can
+  // authenticated and the page renders. There is no login screen; anyone who can
   // reach the URL is the operator.
   if (!user) {
     const email = runtimeEnv('OPERATOR_EMAIL');

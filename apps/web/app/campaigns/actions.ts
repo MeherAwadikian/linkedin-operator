@@ -8,7 +8,7 @@ const NETWORKS = ['any', 'first', 'second'] as const;
 /**
  * Create a campaign and enqueue the worker job that runs it. The worker searches
  * LinkedIn, collects matching people, and queues one personalized
- * connection-with-note per person into the Approval Queue — nothing is sent until
+ * connection-with-note per person into the Approval Queue; nothing is sent until
  * the operator approves each. No email, no contact-detail scraping.
  */
 export async function createCampaign(formData: FormData): Promise<void> {

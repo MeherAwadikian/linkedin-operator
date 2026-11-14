@@ -35,7 +35,7 @@ const ALL_TABLES: RealtimeTable[] = [
  * Two deliberate constraints keep this from thrashing the page:
  * - `tables` scopes the subscription to only what the page renders. Subscribing
  *   every page to all 8 tables meant an unrelated change (e.g. a campaign the
- *   worker is drafting) refetched pages that don't show it — including while the
+ *   worker is drafting) refetched pages that don't show it, including while the
  *   operator was typing into a form on the Console.
  * - `router.refresh()` is debounced, so a burst of row changes (e.g. collecting
  *   50 people in one campaign) coalesces into a single refetch instead of firing

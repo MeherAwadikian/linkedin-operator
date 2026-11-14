@@ -40,7 +40,7 @@ export default async function PostsPage() {
       <RealtimeRefresh tables={['post_campaigns']} />
       <h1 className="mb-1 text-2xl font-semibold">Posts</h1>
       <p className="mb-6 max-w-2xl text-sm text-neutral-500">
-        Describe the post you want — the AI writes it, and the draft goes to the{' '}
+        Describe the post you want; the AI writes it, and the draft goes to the{' '}
         <a href="/approvals" className="underline">
           Approval Queue
         </a>{' '}

@@ -8,7 +8,7 @@ const INGEST_TOKEN = process.env.WORKER_INGEST_TOKEN ?? '';
 /**
  * Only send secrets to a worker URL we recognize: a cloudflared quick tunnel over
  * https, or localhost (same-machine). This bounds the endpoint even though only
- * service_role can write app.worker_endpoints — defense in depth against a poisoned
+ * service_role can write app.worker_endpoints: defense in depth against a poisoned
  * row routing plaintext secrets off-host.
  */
 function isAllowedIngestUrl(raw: string): boolean {
@@ -26,7 +26,7 @@ function isAllowedIngestUrl(raw: string): boolean {
 /**
  * Resolve the worker's current public URL. The launcher publishes the live tunnel
  * hostname into app.worker_endpoints on every start, so the web app discovers it
- * dynamically — no Cloudflare var to re-set when the tunnel changes. Falls back to
+ * dynamically; no Cloudflare var to re-set when the tunnel changes. Falls back to
  * the WORKER_INGEST_URL env var, then localhost. The chosen URL is validated.
  */
 async function resolveIngestUrl(): Promise<string> {
@@ -50,7 +50,7 @@ async function resolveIngestUrl(): Promise<string> {
 
 /**
  * Forward a just-entered secret to the worker's local ingest endpoint. The web
- * tier never encrypts or stores it — the worker (sole holder of the master key)
+ * tier never encrypts or stores it; the worker (sole holder of the master key)
  * does. The plaintext exists only for the duration of this request.
  */
 async function forwardSecret(userId: string, kind: string, value: string): Promise<void> {
