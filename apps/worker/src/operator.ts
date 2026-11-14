@@ -7,6 +7,9 @@ import {
   isLinkedInProfileUrl,
   planCommand,
   type EmailRecipient,
+  type LlmProvider,
+  type ProviderName,
+  type SecretKind,
 } from '@lo/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendGmail } from './email.ts';
@@ -322,9 +325,29 @@ export class LinkedInOperator {
   }
 
   /**
-   * Command-console planning: fetch the user's Claude key, turn the instruction
+   * Build the LLM provider from whichever key the operator has saved, trying
+   * Anthropic first, then OpenRouter, then DeepSeek. Returns null when none is
+   * configured so the caller can fail the job with a clear message. This lets an
+   * operator who only has an OpenRouter or DeepSeek key still use the AI drafting
+   * and planning features instead of being forced to supply an Anthropic key.
+   */
+  private async resolveProvider(userId: string): Promise<LlmProvider | null> {
+    const candidates: Array<{ kind: SecretKind; provider: ProviderName }> = [
+      { kind: 'anthropic_key', provider: 'anthropic' },
+      { kind: 'openrouter_key', provider: 'openrouter' },
+      { kind: 'deepseek_key', provider: 'deepseek' },
+    ];
+    for (const { kind, provider } of candidates) {
+      const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, userId, kind);
+      if (apiKey) return createProvider({ provider, apiKey });
+    }
+    return null;
+  }
+
+  /**
+   * Command-console planning: resolve the user's LLM key, turn the instruction
    * into a validated plan, and write it back to command_sessions for the UI to
-   * preview. No LinkedIn session needed — this only produces a plan.
+   * preview. No LinkedIn session needed; this only produces a plan.
    */
   private async doPlan(job: JobRow): Promise<JobResult> {
     const sessionId = String(job.payload.session_id ?? '');
@@ -342,16 +365,17 @@ export class LinkedInOperator {
       .maybeSingle();
     if (!owned) return { status: 'failed', error: 'command session not found for this user' };
 
-    const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
-    if (!apiKey) {
+    const provider = await this.resolveProvider(job.user_id);
+    if (!provider) {
+      const error =
+        'no LLM key configured (add an Anthropic, OpenRouter, or DeepSeek key in Settings)';
       await this.cfg.sb
         .from('command_sessions')
-        .update({ status: 'error', plan: { error: 'no Anthropic key configured' } })
+        .update({ status: 'error', plan: { error } })
         .eq('id', sessionId)
         .eq('user_id', job.user_id);
-      return { status: 'failed', error: 'no Anthropic key configured' };
+      return { status: 'failed', error };
     }
-    const provider = createProvider({ provider: 'anthropic', apiKey });
     const { plan } = await planCommand(provider, instruction);
     await this.cfg.sb
       .from('command_sessions')
@@ -450,7 +474,12 @@ export class LinkedInOperator {
   ): Promise<void> {
     await this.cfg.sb
       .from('campaigns')
-      .update({ status, queued_count: queued, last_error: err ?? null, updated_at: new Date().toISOString() })
+      .update({
+        status,
+        queued_count: queued,
+        last_error: err ?? null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id)
       .eq('user_id', userId);
   }
@@ -468,14 +497,18 @@ export class LinkedInOperator {
       ? (job.payload.recipients as EmailRecipient[])
       : [];
     if (!campaignId || !brief || recipients.length === 0) {
-      return { status: 'failed', error: 'email_campaign.draft needs campaign_id + brief + recipients' };
+      return {
+        status: 'failed',
+        error: 'email_campaign.draft needs campaign_id + brief + recipients',
+      };
     }
-    const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
-    if (!apiKey) {
-      await this.setEmailCampaign(campaignId, job.user_id, 'failed', 0, 'no Anthropic key configured');
-      return { status: 'failed', error: 'no Anthropic key configured' };
+    const provider = await this.resolveProvider(job.user_id);
+    if (!provider) {
+      const error =
+        'no LLM key configured (add an Anthropic, OpenRouter, or DeepSeek key in Settings)';
+      await this.setEmailCampaign(campaignId, job.user_id, 'failed', 0, error);
+      return { status: 'failed', error };
     }
-    const provider = createProvider({ provider: 'anthropic', apiKey });
 
     let queued = 0;
     for (const r of recipients.slice(0, 50)) {
@@ -510,7 +543,8 @@ export class LinkedInOperator {
     const to = String(job.payload.to ?? '');
     const subject = String(job.payload.subject ?? '');
     const body = String(job.payload.body ?? '');
-    if (!to || !subject || !body) return { status: 'failed', error: 'email.send needs to/subject/body' };
+    if (!to || !subject || !body)
+      return { status: 'failed', error: 'email.send needs to/subject/body' };
     if (await this.isDryRun(job.user_id)) {
       return { status: 'blocked', error: 'dry-run is on — email not sent' };
     }
@@ -542,14 +576,16 @@ export class LinkedInOperator {
   private async doPostCampaign(job: JobRow): Promise<JobResult> {
     const postId = String(job.payload.post_campaign_id ?? '');
     const brief = String(job.payload.brief ?? '').trim();
-    if (!postId || !brief) return { status: 'failed', error: 'post_campaign.draft needs id + brief' };
+    if (!postId || !brief)
+      return { status: 'failed', error: 'post_campaign.draft needs id + brief' };
 
-    const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
-    if (!apiKey) {
-      await this.setPostCampaign(postId, job.user_id, 'failed', '', 'no Anthropic key configured');
-      return { status: 'failed', error: 'no Anthropic key configured' };
+    const provider = await this.resolveProvider(job.user_id);
+    if (!provider) {
+      const error =
+        'no LLM key configured (add an Anthropic, OpenRouter, or DeepSeek key in Settings)';
+      await this.setPostCampaign(postId, job.user_id, 'failed', '', error);
+      return { status: 'failed', error };
     }
-    const provider = createProvider({ provider: 'anthropic', apiKey });
 
     let body: string;
     try {
@@ -566,7 +602,13 @@ export class LinkedInOperator {
       .select('id')
       .single();
     if (draftErr || !draft) {
-      await this.setPostCampaign(postId, job.user_id, 'failed', body, draftErr?.message ?? 'draft insert failed');
+      await this.setPostCampaign(
+        postId,
+        job.user_id,
+        'failed',
+        body,
+        draftErr?.message ?? 'draft insert failed',
+      );
       return { status: 'failed', error: draftErr?.message ?? 'draft insert failed' };
     }
     await this.cfg.sb.from('jobs_queue').insert({
@@ -615,16 +657,24 @@ export class LinkedInOperator {
     }
     const budget = source === 'search' ? 'search' : 'collect_feed';
     if (!(await this.withinRateLimit(job.user_id, budget))) {
-      await this.setLikeCampaign(campaignId, job.user_id, 'failed', 0, 0, `rate limit reached for ${budget}`);
+      await this.setLikeCampaign(
+        campaignId,
+        job.user_id,
+        'failed',
+        0,
+        0,
+        `rate limit reached for ${budget}`,
+      );
       return { status: 'blocked', error: `rate limit reached for ${budget}` };
     }
 
-    const apiKey = await fetchSecret(this.cfg.sb, this.cfg.masterKey, job.user_id, 'anthropic_key');
-    if (!apiKey) {
-      await this.setLikeCampaign(campaignId, job.user_id, 'failed', 0, 0, 'no Anthropic key configured');
-      return { status: 'failed', error: 'no Anthropic key configured' };
+    const provider = await this.resolveProvider(job.user_id);
+    if (!provider) {
+      const error =
+        'no LLM key configured (add an Anthropic, OpenRouter, or DeepSeek key in Settings)';
+      await this.setLikeCampaign(campaignId, job.user_id, 'failed', 0, 0, error);
+      return { status: 'failed', error };
     }
-    const provider = createProvider({ provider: 'anthropic', apiKey });
 
     const url =
       source === 'search' && query
@@ -730,7 +780,12 @@ export class LinkedInOperator {
   ): Promise<void> {
     await this.cfg.sb
       .from('email_campaigns')
-      .update({ status, queued_count: queued, last_error: err ?? null, updated_at: new Date().toISOString() })
+      .update({
+        status,
+        queued_count: queued,
+        last_error: err ?? null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', id)
       .eq('user_id', userId);
   }
