@@ -14,6 +14,32 @@ function runtimeEnv(key: string): string | undefined {
   return process.env[key];
 }
 
+/** Default ceiling for a single auth round-trip. Normal calls finish in well
+ * under a second; this only trips when the database is unreachable or stalled. */
+const DEFAULT_AUTH_TIMEOUT_MS = 5000;
+
+function authTimeoutMs(): number {
+  const raw = runtimeEnv('AUTH_TIMEOUT_MS');
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_AUTH_TIMEOUT_MS;
+}
+
+/** Resolve to the promise's value, or to the sentinel if it does not settle in
+ * time. Prevents a stalled Supabase/Postgres from blocking the request for the
+ * platform's full timeout: an auth round-trip that hangs degrades to "no session"
+ * fast instead of freezing every page for 30-60s. */
+async function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onTimeout), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Refreshes the Supabase session on every request. In no-login mode it also
  * auto-signs-in the fixed operator when there is no session, so the app opens
@@ -45,10 +71,18 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   );
 
   // IMPORTANT: getUser() revalidates with the auth server; do not use getSession
-  // here (it trusts the cookie without verification).
+  // here (it trusts the cookie without verification). Bounded by a timeout so a
+  // stalled database degrades to "no session" instead of hanging the request.
+  const timeoutMs = authTimeoutMs();
+  const getUserResult = await withTimeout(supabase.auth.getUser(), timeoutMs, null);
+  if (getUserResult === null) {
+    // Auth round-trip timed out (database unreachable). Serve the request without
+    // a session rather than blocking; skip auto-login, which would also hang.
+    return response;
+  }
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = getUserResult;
 
   // No-login mode: the app is a single open operator console. When there is no
   // session, sign in automatically as the fixed operator (credentials from env).
@@ -60,8 +94,14 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     const email = runtimeEnv('OPERATOR_EMAIL');
     const password = runtimeEnv('OPERATOR_PASSWORD');
     if (email && password) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (!error) {
+      const signIn = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        timeoutMs,
+        null,
+      );
+      // null = sign-in timed out (database stalled); fall through to the plain
+      // response instead of hanging.
+      if (signIn && !signIn.error) {
         const dest = request.nextUrl.clone();
         if (dest.pathname.startsWith('/login')) dest.pathname = '/';
         const redirect = NextResponse.redirect(dest);
