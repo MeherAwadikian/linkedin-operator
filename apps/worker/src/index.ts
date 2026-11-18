@@ -15,7 +15,13 @@ import { LinkedInOperator } from './operator.ts';
 import { drainQueue, heartbeat, type JobResult, type JobRow } from './queue.ts';
 import { createServiceClient } from './supabase.ts';
 
-const HEARTBEAT_MS = Number(process.env.WORKER_HEARTBEAT_MS ?? 5000);
+// Heartbeat and job-poll run on separate intervals so a long-running job never
+// starves the heartbeat, and each loop guards against overlapping runs. Both
+// default slow: at 5s the worker could pile up overlapping requests during a DB
+// slow spell and exhaust the (small, free-tier) connection pool. 20s heartbeat /
+// 15s poll cuts baseline DB load ~4x while keeping job latency well under human scale.
+const HEARTBEAT_MS = Number(process.env.WORKER_HEARTBEAT_MS ?? 20000);
+const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 15000);
 const WORKER_ID = process.env.WORKER_ID ?? 'worker-local';
 const INGEST_PORT = Number(process.env.WORKER_INGEST_PORT ?? 8787);
 const BROWSER_DIR =
@@ -80,6 +86,7 @@ async function main(): Promise<void> {
   log('worker.boot', {
     node: process.version,
     heartbeatMs: HEARTBEAT_MS,
+    pollMs: POLL_MS,
     ruleCount: defaultRules().length,
     workerId: WORKER_ID,
     supabase: sb ? 'connected' : 'not configured (local heartbeat only)',
@@ -125,26 +132,60 @@ async function main(): Promise<void> {
       ? operator.handle(job)
       : handleJob(job);
 
+  // Two independent loops, each skipping its own tick if the previous one is
+  // still in flight. The re-entrancy guards are what prevent connection-pool
+  // exhaustion: during a DB slow spell, requests no longer stack up faster than
+  // they drain. Heartbeat is decoupled from the job drain so a long-running job
+  // (e.g. a slow Playwright action) never makes the worker look offline.
   let beat = 0;
-  const timer = setInterval(() => {
-    beat += 1;
-    void tick(beat).catch((err: unknown) => {
-      log('worker.tick_error', { message: err instanceof Error ? err.message : String(err) });
-    });
-  }, HEARTBEAT_MS);
+  let heartbeatInFlight = false;
+  let drainInFlight = false;
 
-  async function tick(n: number): Promise<void> {
+  const heartbeatTimer = setInterval(() => {
+    beat += 1;
     if (!sb) {
-      log('worker.heartbeat', { beat: n });
+      log('worker.heartbeat', { beat });
       return;
     }
-    await heartbeat(sb, WORKER_ID, { beat: n }, new Date().toISOString());
-    const processed = await drainQueue(sb, WORKER_ID, route);
-    log('worker.heartbeat', { beat: n, processed });
-  }
+    if (heartbeatInFlight) {
+      log('worker.heartbeat_skipped', { beat });
+      return;
+    }
+    heartbeatInFlight = true;
+    void heartbeat(sb, WORKER_ID, { beat }, new Date().toISOString())
+      .then(() => {
+        log('worker.heartbeat', { beat });
+      })
+      .catch((err: unknown) => {
+        log('worker.tick_error', { message: err instanceof Error ? err.message : String(err) });
+      })
+      .finally(() => {
+        heartbeatInFlight = false;
+      });
+  }, HEARTBEAT_MS);
+
+  const drainTimer = setInterval(() => {
+    if (!sb || drainInFlight) {
+      return;
+    }
+    drainInFlight = true;
+    void drainQueue(sb, WORKER_ID, route)
+      .then((processed) => {
+        if (processed) {
+          log('worker.drained', { processed });
+        }
+      })
+      .catch((err: unknown) => {
+        log('worker.tick_error', { message: err instanceof Error ? err.message : String(err) });
+      })
+      .finally(() => {
+        drainInFlight = false;
+      });
+  }, POLL_MS);
 
   const shutdown = (signal: string): void => {
-    clearInterval(timer);
+    clearInterval(heartbeatTimer);
+    clearInterval(drainTimer);
     log('worker.shutdown', { signal });
     process.exit(0);
   };
