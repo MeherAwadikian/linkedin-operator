@@ -1,0 +1,13 @@
+[Unit]
+Description=LinkedIn Operator worker (Playwright, headful under Xvfb)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/root/linkedin-operator/apps/worker
+ExecStart=/usr/bin/xvfb-run -a /usr/bin/node --env-file=.env --import tsx src/index.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

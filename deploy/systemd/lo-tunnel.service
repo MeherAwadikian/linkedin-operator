@@ -1,0 +1,12 @@
+[Unit]
+Description=LinkedIn Operator cloudflared quick tunnel + endpoint publisher
+After=network-online.target lo-worker.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/lo-tunnel.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
