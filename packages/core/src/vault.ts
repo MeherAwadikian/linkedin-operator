@@ -28,7 +28,8 @@ export type SecretKind =
   | 'gmail_password'
   | 'anthropic_key'
   | 'openrouter_key'
-  | 'deepseek_key';
+  | 'deepseek_key'
+  | 'firecrawl_key';
 
 /** Serialized, DB-ready encrypted secret. All binary fields are base64. */
 export interface SealedSecret {

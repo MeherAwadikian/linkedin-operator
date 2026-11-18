@@ -13,7 +13,9 @@ export type RealtimeTable =
   | 'campaigns'
   | 'email_campaigns'
   | 'post_campaigns'
-  | 'like_campaigns';
+  | 'like_campaigns'
+  | 'message_campaigns'
+  | 'comment_campaigns';
 
 const ALL_TABLES: RealtimeTable[] = [
   'jobs_queue',
@@ -24,6 +26,8 @@ const ALL_TABLES: RealtimeTable[] = [
   'email_campaigns',
   'post_campaigns',
   'like_campaigns',
+  'message_campaigns',
+  'comment_campaigns',
 ];
 
 /**

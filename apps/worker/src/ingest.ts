@@ -9,6 +9,7 @@ const ALLOWED_KINDS: readonly SecretKind[] = [
   'anthropic_key',
   'openrouter_key',
   'deepseek_key',
+  'firecrawl_key',
 ];
 const MAX_BODY = 64 * 1024;
 
@@ -76,7 +77,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, cfg: IngestConf
   // queue a login so the worker opens Chrome and logs in automatically (headful,
   // so any 2FA/checkpoint is visible). No manual "Connect" click needed.
   if (kind === 'linkedin_password') {
-    await cfg.sb.from('jobs_queue').insert({ user_id: userId, type: 'linkedin.login', payload: {} });
+    await cfg.sb
+      .from('jobs_queue')
+      .insert({ user_id: userId, type: 'linkedin.login', payload: {} });
     cfg.log('worker.auto_login_queued', { userId });
   }
 

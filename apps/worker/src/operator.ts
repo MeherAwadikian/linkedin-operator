@@ -1,7 +1,9 @@
 import {
   classifyLike,
   createProvider,
+  draftComment,
   draftEmail,
+  draftMessage,
   draftPost,
   isLinkedInHost,
   isLinkedInProfileUrl,
@@ -73,6 +75,10 @@ export class LinkedInOperator {
           return await this.doPostCampaign(job);
         case 'like_campaign.start':
           return await this.doLikeCampaign(job);
+        case 'message_campaign.start':
+          return await this.doMessageCampaign(job);
+        case 'comment_campaign.start':
+          return await this.doCommentCampaign(job);
         case 'linkedin.like':
         case 'linkedin.comment':
         case 'linkedin.post':
@@ -750,6 +756,246 @@ export class LinkedInOperator {
   ): Promise<void> {
     await this.cfg.sb
       .from('like_campaigns')
+      .update({
+        status,
+        scanned_count: scanned,
+        queued_count: queued,
+        last_error: err ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', userId);
+  }
+
+  /**
+   * Run a message campaign: search LinkedIn for the audience (1st-degree by
+   * default, since messaging needs a connection), have the AI draft ONE
+   * personalized message per person from the operator's brief, and queue each
+   * linkedin.message into the APPROVAL queue (awaiting_approval). Nothing is
+   * sent here; the operator approves each draft, then the gated send path runs.
+   */
+  private async doMessageCampaign(job: JobRow): Promise<JobResult> {
+    const campaignId = String(job.payload.message_campaign_id ?? '');
+    const brief = String(job.payload.brief ?? '').trim();
+    const audience = String(job.payload.audience ?? '').trim();
+    const networkType = String(job.payload.network_type ?? 'first');
+    const max = Math.min(Number(job.payload.max_targets ?? 5), 25);
+    if (!campaignId || !brief || !audience) {
+      return { status: 'failed', error: 'message_campaign.start needs id + brief + audience' };
+    }
+
+    const notReady = await this.ensureLoggedIn(job.user_id);
+    if (notReady) {
+      await this.setMessageCampaign(campaignId, job.user_id, 'failed', 0, notReady.error);
+      return notReady;
+    }
+    if (!(await this.withinRateLimit(job.user_id, 'search'))) {
+      await this.setMessageCampaign(
+        campaignId,
+        job.user_id,
+        'failed',
+        0,
+        'rate limit reached for search',
+      );
+      return { status: 'blocked', error: 'rate limit reached for search' };
+    }
+    const provider = await this.resolveProvider(job.user_id);
+    if (!provider) {
+      const error =
+        'no LLM key configured (add an Anthropic, OpenRouter, or DeepSeek key in Settings)';
+      await this.setMessageCampaign(campaignId, job.user_id, 'failed', 0, error);
+      return { status: 'failed', error };
+    }
+
+    const net =
+      networkType === 'any'
+        ? ''
+        : networkType === 'second'
+          ? '&network=%5B%22S%22%5D'
+          : '&network=%5B%22F%22%5D';
+    const url = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(audience)}${net}`;
+    if (!isLinkedInHost(url)) return { status: 'failed', error: 'search URL failed host check' };
+
+    const { page } = await this.ensureSession();
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    if (!isLinkedInHost(page.url())) {
+      return { status: 'failed', error: `navigation left LinkedIn: ${page.url()}` };
+    }
+    await assertNotBlocked(page);
+
+    const people = await this.collectAndStorePeople(page, job.user_id, max);
+
+    let queued = 0;
+    for (const p of people) {
+      let body: string;
+      try {
+        ({ body } = await draftMessage(provider, {
+          brief,
+          target: { name: p.display_name },
+        }));
+      } catch {
+        continue; // skip one that failed to draft; keep going
+      }
+      const { data: draft, error: draftErr } = await this.cfg.sb
+        .from('drafts')
+        .insert({
+          user_id: job.user_id,
+          kind: 'message',
+          target: { profile_url: p.profile_url },
+          body,
+          status: 'approved',
+        })
+        .select('id')
+        .single();
+      if (draftErr || !draft) continue;
+      const { error: jobErr } = await this.cfg.sb.from('jobs_queue').insert({
+        user_id: job.user_id,
+        type: 'linkedin.message',
+        status: 'awaiting_approval',
+        payload: {
+          thread_url: p.profile_url,
+          draft_id: draft.id,
+          message_campaign_id: campaignId,
+        },
+      });
+      if (!jobErr) queued += 1;
+    }
+
+    await this.setMessageCampaign(campaignId, job.user_id, 'ready', queued, null);
+    return { status: 'done', result: { collected: people.length, queued } };
+  }
+
+  private async setMessageCampaign(
+    id: string,
+    userId: string,
+    status: string,
+    queued: number,
+    err: string | null | undefined,
+  ): Promise<void> {
+    await this.cfg.sb
+      .from('message_campaigns')
+      .update({
+        status,
+        queued_count: queued,
+        last_error: err ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', userId);
+  }
+
+  /**
+   * Run a comment campaign: scan a content search for the audience (or the
+   * feed), have the AI judge each post against the audience criteria, draft a
+   * comment from the operator's brief for the matches, and queue each
+   * linkedin.comment into the APPROVAL queue. Nothing posts without approval.
+   */
+  private async doCommentCampaign(job: JobRow): Promise<JobResult> {
+    const campaignId = String(job.payload.comment_campaign_id ?? '');
+    const brief = String(job.payload.brief ?? '').trim();
+    const audience = String(job.payload.audience ?? '').trim();
+    const source = String(job.payload.source ?? 'feed');
+    const maxComments = Math.min(Number(job.payload.max_comments ?? 5), 20);
+    if (!campaignId || !brief) {
+      return { status: 'failed', error: 'comment_campaign.start needs id + brief' };
+    }
+
+    const notReady = await this.ensureLoggedIn(job.user_id);
+    if (notReady) {
+      await this.setCommentCampaign(campaignId, job.user_id, 'failed', 0, 0, notReady.error);
+      return notReady;
+    }
+    const budget = source === 'search' ? 'search' : 'collect_feed';
+    if (!(await this.withinRateLimit(job.user_id, budget))) {
+      await this.setCommentCampaign(
+        campaignId,
+        job.user_id,
+        'failed',
+        0,
+        0,
+        `rate limit reached for ${budget}`,
+      );
+      return { status: 'blocked', error: `rate limit reached for ${budget}` };
+    }
+    const provider = await this.resolveProvider(job.user_id);
+    if (!provider) {
+      const error =
+        'no LLM key configured (add an Anthropic, OpenRouter, or DeepSeek key in Settings)';
+      await this.setCommentCampaign(campaignId, job.user_id, 'failed', 0, 0, error);
+      return { status: 'failed', error };
+    }
+
+    const url =
+      source === 'search' && audience
+        ? `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent(audience)}`
+        : 'https://www.linkedin.com/feed/';
+    if (!isLinkedInHost(url)) return { status: 'failed', error: 'scan URL failed host check' };
+
+    const { page } = await this.ensureSession();
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    if (!isLinkedInHost(page.url())) {
+      return { status: 'failed', error: `navigation left LinkedIn: ${page.url()}` };
+    }
+    await assertNotBlocked(page);
+    for (let i = 0; i < 5; i++) {
+      await page.mouse.wheel(0, 2200);
+      await page.waitForTimeout(1200);
+      await assertNotBlocked(page);
+    }
+
+    const posts = await this.collectFeedPosts(page, 25);
+    let queued = 0;
+    for (const p of posts) {
+      if (queued >= maxComments) break;
+      // Match first (conservative classifier), then draft; either step may skip.
+      try {
+        const decision = await classifyLike(provider, audience || brief, p.text);
+        if (!decision.like) continue;
+      } catch {
+        continue;
+      }
+      let body: string;
+      try {
+        ({ body } = await draftComment(provider, brief, p.text));
+      } catch {
+        continue;
+      }
+      if (!body) continue; // model judged the post unsuitable
+      const { data: draft, error: draftErr } = await this.cfg.sb
+        .from('drafts')
+        .insert({
+          user_id: job.user_id,
+          kind: 'comment',
+          target: { post_url: p.url },
+          body,
+          status: 'approved',
+        })
+        .select('id')
+        .single();
+      if (draftErr || !draft) continue;
+      const { error: jobErr } = await this.cfg.sb.from('jobs_queue').insert({
+        user_id: job.user_id,
+        type: 'linkedin.comment',
+        status: 'awaiting_approval',
+        payload: { post_url: p.url, draft_id: draft.id, comment_campaign_id: campaignId },
+      });
+      if (!jobErr) queued += 1;
+    }
+
+    await this.setCommentCampaign(campaignId, job.user_id, 'ready', posts.length, queued, null);
+    return { status: 'done', result: { scanned: posts.length, queued } };
+  }
+
+  private async setCommentCampaign(
+    id: string,
+    userId: string,
+    status: string,
+    scanned: number,
+    queued: number,
+    err: string | null | undefined,
+  ): Promise<void> {
+    await this.cfg.sb
+      .from('comment_campaigns')
       .update({
         status,
         scanned_count: scanned,

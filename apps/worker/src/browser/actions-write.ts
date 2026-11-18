@@ -95,12 +95,26 @@ export async function postUpdate(page: Page, text: string): Promise<WriteResult>
   return { ok: true, detail: 'post submitted (verify in the feed)' };
 }
 
-/** Send a message in the already-open thread with the approved text. */
+/** Send a message with the approved text. Works in an already-open thread; on a
+ * profile page it first clicks the profile's "Message" button to open one. */
 export async function sendMessage(page: Page, text: string): Promise<WriteResult> {
-  const box = await firstVisible(page, [
+  const boxSelectors = [
     'div.msg-form__contenteditable[contenteditable="true"]',
     'div[role="textbox"][contenteditable="true"]',
-  ]);
+  ];
+  let box = await firstVisible(page, boxSelectors);
+  if (!box) {
+    const openThread = await firstVisible(page, [
+      'button[aria-label^="Message" i]',
+      'a[aria-label^="Message" i]',
+      'button:has-text("Message")',
+    ]);
+    if (openThread) {
+      await openThread.click().catch(() => {});
+      await page.waitForTimeout(1200);
+      box = await firstVisible(page, boxSelectors);
+    }
+  }
   if (!box) return { ok: false, detail: 'message box not found (selector needs tuning)' };
   await box.click();
   await box.type(text, { delay: 15 });

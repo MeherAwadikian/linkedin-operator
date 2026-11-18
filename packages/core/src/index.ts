@@ -139,6 +139,10 @@ export { draftPost } from './post/draft.ts';
 export type { DraftedPost } from './post/draft.ts';
 export { classifyLike } from './like/classify.ts';
 export type { LikeDecision } from './like/classify.ts';
+export { draftMessage } from './message/draft.ts';
+export type { DraftedMessage, MessageTarget } from './message/draft.ts';
+export { draftComment } from './comment/draft.ts';
+export type { DraftedComment } from './comment/draft.ts';
 
 export { classifyLinkedInPage, isBlocked } from './linkedin/checkpoint.ts';
 export type { PageState, PageSignal, PageClassification } from './linkedin/checkpoint.ts';

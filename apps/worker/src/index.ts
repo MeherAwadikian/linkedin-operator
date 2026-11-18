@@ -65,7 +65,9 @@ async function autoOpenLinkedIn(
     for (const a of rows) {
       if (!a.login_email) continue; // no credentials yet
       if (a.status === 'active' || a.status === 'checkpoint') continue; // open, or needs a human
-      await sb.from('jobs_queue').insert({ user_id: a.user_id, type: 'linkedin.login', payload: {} });
+      await sb
+        .from('jobs_queue')
+        .insert({ user_id: a.user_id, type: 'linkedin.login', payload: {} });
       log('worker.auto_open_linkedin', { userId: a.user_id });
     }
   } catch (err) {

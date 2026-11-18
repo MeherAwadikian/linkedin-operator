@@ -1,5 +1,6 @@
 const NAV = [
   { label: 'Dashboard', href: '/' },
+  { label: 'Control Panel', href: '/panel' },
   { label: 'Stats', href: '/stats' },
   { label: 'Campaigns', href: '/campaigns' },
   { label: 'Email', href: '/email-campaigns' },
