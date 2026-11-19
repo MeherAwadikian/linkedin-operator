@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import * as THREE from 'three';
+import { toast } from './toast.tsx';
 
 /** Draw the button-top texture: flame-yellow cap with a bold START legend. */
 function makeTopTexture(): THREE.CanvasTexture {
@@ -112,13 +113,39 @@ export function StartButton({ action }: { action: () => Promise<void> }) {
     group.add(button);
 
     let frame = 0;
+    let running = false;
+    let inViewport = true;
+    let tabVisible = document.visibilityState === 'visible';
     const animate = () => {
       frame = requestAnimationFrame(animate);
       group.rotation.y += speedRef.current;
       group.position.y = Math.sin(Date.now() / 900) * 0.08;
       renderer.render(scene, camera);
     };
-    animate();
+    // Pause the loop when the button scrolls offscreen or the tab is hidden,
+    // so the GPU idles whenever nobody can see the scene.
+    const sync = () => {
+      const shouldRun = inViewport && tabVisible;
+      if (shouldRun && !running) {
+        running = true;
+        animate();
+      } else if (!shouldRun && running) {
+        running = false;
+        cancelAnimationFrame(frame);
+      }
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      inViewport = entry?.isIntersecting ?? true;
+      sync();
+    });
+    io.observe(mount);
+    const onVisibility = () => {
+      tabVisible = document.visibilityState === 'visible';
+      sync();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    renderer.render(scene, camera);
+    sync();
 
     const onResize = () => {
       renderer.setSize(mount.clientWidth, mount.clientHeight);
@@ -130,6 +157,8 @@ export function StartButton({ action }: { action: () => Promise<void> }) {
 
     return () => {
       observer.disconnect();
+      io.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
       cancelAnimationFrame(frame);
       for (const d of disposables) d.dispose();
       renderer.dispose();
@@ -141,9 +170,15 @@ export function StartButton({ action }: { action: () => Promise<void> }) {
     if (pending) return;
     speedRef.current = 0.09; // rev the animation while the run is firing
     startTransition(async () => {
-      await action();
-      speedRef.current = 0.025;
-      setFired(true);
+      try {
+        await action();
+        setFired(true);
+        toast('success', 'Run ignited. Staged campaigns are rolling.');
+      } catch {
+        toast('error', 'Ignition failed. Check the worker and try again.');
+      } finally {
+        speedRef.current = 0.025;
+      }
     });
   };
 
@@ -153,7 +188,8 @@ export function StartButton({ action }: { action: () => Promise<void> }) {
       onClick={ignite}
       disabled={pending}
       aria-label="Start the main run"
-      className="group block w-full cursor-pointer border-0 bg-transparent p-0 text-center"
+      data-testid="start-button"
+      className="group block w-full cursor-pointer rounded-xl border-0 bg-transparent p-0 text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-flame-500"
     >
       <div ref={mountRef} className="mx-auto h-[340px] w-full max-w-xl" />
       <span className="mt-2 inline-block text-sm font-semibold uppercase tracking-[0.3em]">

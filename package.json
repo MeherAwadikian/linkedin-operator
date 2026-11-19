@@ -12,6 +12,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
+    "qa": "node scripts/qa.mjs",
     "dev:web": "pnpm --filter @lo/web dev",
     "dev:worker": "pnpm --filter @lo/worker dev",
     "format": "prettier --write ."

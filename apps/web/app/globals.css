@@ -9,3 +9,25 @@
 body {
   @apply bg-neutral-50 text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100;
 }
+
+/* Visible keyboard focus everywhere; mouse clicks stay clean. */
+:focus-visible {
+  outline: 2px solid #d7141a;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(215, 20, 26, 0.35);
+}
+
+/* Hard stop for animation when the user asks for reduced motion. Component
+   logic already renders static variants; this catches any CSS animation too. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

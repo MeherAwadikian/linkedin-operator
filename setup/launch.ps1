@@ -56,10 +56,20 @@ if (-not $cloudflared -and (Test-Path 'C:\Program Files (x86)\cloudflared\cloudf
 if (-not $cloudflared) { Say "  cloudflared not found. Install from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/ then re-run." 'Yellow'; Read-Host "Enter to exit"; exit 1 }
 Say "  cloudflared ready" 'Green'
 
-# --- 4. Chrome (needed by the worker's Playwright) ---
+# --- 4. Chrome (needed by the worker's Playwright, channel:'chrome') ---
 Say "[4/6] Google Chrome..."
-$chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe","${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe","$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $chrome) { Say "  Chrome not detected - install it from https://www.google.com/chrome before using LinkedIn actions." 'Yellow' } else { Say "  Chrome found" 'Green' }
+function Find-Chrome {
+  @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe","${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe","$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+$chrome = Find-Chrome
+if (-not $chrome) {
+  Say "  Chrome not detected - installing via winget..." 'Yellow'
+  Winget-Install 'Google.Chrome'
+  $chrome = Find-Chrome
+}
+if ($chrome) { Say "  Chrome found" 'Green' }
+else { Say "  Chrome still missing - the worker will fall back to Playwright's Chromium (installed below). For best results install https://www.google.com/chrome" 'Yellow' }
 
 # --- 5. Install dependencies ---
 Say "[5/6] Installing dependencies (first run can take a few minutes)..."
@@ -67,6 +77,17 @@ Push-Location $repo
 pnpm install --silent
 Pop-Location
 Say "  dependencies ready" 'Green'
+
+# Browser-automation runtime: when Chrome is missing, install Playwright's
+# bundled Chromium so LinkedIn automation still has a browser to drive.
+if (-not $chrome) {
+  Say "  installing Playwright Chromium fallback (one-time download)..." 'DarkGray'
+  Push-Location $repo
+  pnpm --filter "@lo/worker" exec playwright install chromium
+  if ($LASTEXITCODE -eq 0) { Say "  Playwright Chromium ready" 'Green' }
+  else { Say "  could not install Playwright Chromium - LinkedIn actions will fail until Chrome or Chromium is installed" 'Yellow' }
+  Pop-Location
+}
 
 # Give this machine a unique worker id (avoids clashes on the shared database).
 $envFile = Join-Path $repo 'apps\worker\.env'
