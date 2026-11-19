@@ -10,6 +10,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { defaultRules, loadMasterKey, Redactor } from '@lo/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { browserPreflight } from './browser/preflight.ts';
 import { startIngestServer } from './ingest.ts';
 import { LinkedInOperator } from './operator.ts';
 import { drainQueue, heartbeat, type JobResult, type JobRow } from './queue.ts';
@@ -112,6 +113,16 @@ async function main(): Promise<void> {
       ? new LinkedInOperator({ sb, masterKey, userDataDir: BROWSER_DIR, headless: HEADLESS, log })
       : null;
   log('worker.operator', { linkedin: operator ? 'ready' : 'disabled', headless: HEADLESS });
+
+  // Browser-automation preflight: launch + close a blank page so a broken
+  // browser install is loud at boot, not at the first queued LinkedIn action.
+  // Runs in the background (does not delay the heartbeat); skippable via env.
+  if (process.env.WORKER_SKIP_BROWSER_PREFLIGHT !== '1') {
+    void browserPreflight().then((result) => {
+      if (result.ok) log('browser.ready', { channel: result.channel, detail: result.detail });
+      else log('browser.preflight_failed', { detail: result.detail });
+    });
+  }
 
   // Auto-open LinkedIn on boot: queue a login for every account that already has
   // a configured email (and isn't mid-checkpoint), so the worker logs in on its

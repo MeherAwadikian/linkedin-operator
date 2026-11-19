@@ -46,7 +46,14 @@ pnpm install
 echo "==> Playwright system deps + Google Chrome (worker uses channel:'chrome')"
 cd "$REPO_DIR/apps/worker"
 pnpm exec playwright install-deps
-pnpm exec playwright install chrome
+# Chrome first (the channel the worker uses); bundled Chromium as fallback so
+# automation still works if the Chrome package is unavailable on this distro.
+pnpm exec playwright install chrome || pnpm exec playwright install chromium
+
+echo "==> Browser preflight (launch + close a blank page)"
+node "$REPO_DIR/setup/preflight-browser.mjs" || {
+  echo "browser preflight FAILED - LinkedIn automation will not run until this is fixed" >&2
+}
 
 echo "==> cloudflared"
 if ! command -v cloudflared >/dev/null; then

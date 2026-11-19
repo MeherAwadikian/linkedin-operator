@@ -19,7 +19,21 @@ if (Have 'node') {
 if (Have 'pnpm') { Pass "pnpm $(pnpm --version)" } else { Fail "pnpm not installed (npm i -g pnpm)" }
 if ((Have 'cloudflared') -or (Test-Path 'C:\Program Files (x86)\cloudflared\cloudflared.exe')) { Pass "cloudflared present" } else { Fail "cloudflared not installed" }
 $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe","${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe","$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-if ($chrome) { Pass "Google Chrome found" } else { Warn "Chrome not found - needed for LinkedIn actions" }
+if ($chrome) { Pass "Google Chrome found" } else { Warn "Chrome not found - START.bat auto-installs it (or Playwright Chromium as fallback)" }
+
+# --- browser automation preflight (launch + close a blank page) ---
+if (Test-Path "$repo\node_modules") {
+  $pf = node "$repo\setup\preflight-browser.mjs" 2>&1 | Select-Object -Last 1
+  if ($LASTEXITCODE -eq 0) {
+    $ch = 'browser'
+    try { $ch = ($pf | ConvertFrom-Json).channel } catch {}
+    Pass "browser automation ready (launched + closed a page via $ch)"
+  } else {
+    Fail "browser automation preflight failed: $pf"
+  }
+} else {
+  Warn "browser preflight skipped - dependencies not installed yet (run START.bat)"
+}
 
 # --- dependencies installed ---
 if (Test-Path "$repo\node_modules") { Pass "dependencies installed" } else { Fail "dependencies missing - run: pnpm install" }
