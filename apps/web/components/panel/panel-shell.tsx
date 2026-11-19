@@ -14,11 +14,11 @@ const NAV = [
  * keep the neutral theme and stay reachable from the top-right link.
  */
 export function PanelShell({
-  email,
   active,
   children,
 }: {
-  email: string;
+  // email is still accepted from the pages but no longer shown in the header.
+  email?: string;
   active: string;
   children: React.ReactNode;
 }) {
@@ -51,15 +51,6 @@ export function PanelShell({
                 </a>
               ))}
             </nav>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-chrome-600">{email}</span>
-            <a
-              href="/"
-              className="rounded-md border border-chrome-600/40 px-3 py-1.5 text-xs text-chrome-400 hover:border-chrome-400 hover:text-white"
-            >
-              Classic UI
-            </a>
           </div>
         </div>
       </header>

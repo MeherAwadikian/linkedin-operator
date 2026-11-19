@@ -11,7 +11,13 @@ const NAV = [
   { label: 'Settings', href: '/settings' },
 ] as const;
 
-export function NavShell({ email, children }: { email: string; children: React.ReactNode }) {
+export function NavShell({
+  children,
+}: {
+  // email is still accepted from the pages but no longer shown in the header.
+  email?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="min-h-screen">
       <header className="border-b border-neutral-200 dark:border-neutral-800">
@@ -29,9 +35,6 @@ export function NavShell({ email, children }: { email: string; children: React.R
                 </a>
               ))}
             </nav>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-neutral-500">{email}</span>
           </div>
         </div>
       </header>
