@@ -8,6 +8,17 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  // Required by Cloudflare Workers Builds "Worker Previews": non-production
+  // branches deploy with `npx wrangler preview`, which errors without a
+  // `previews` block. Vars are NOT inherited from the top level, so mirror the
+  // non-secret ones here for working preview deployments.
+  // https://developers.cloudflare.com/workers/previews/configuration/#wrangler-configuration-file
+  "previews": {
+    "vars": {
+      "WORKER_INGEST_URL": "https://worker.example.com",
+      "OPERATOR_EMAIL": "krikormher@gmail.com"
+    }
+  },
   // Non-secret, server-side runtime vars. The web tier reads these to reach the
   // local worker's ingest endpoint (expose the worker via a cloudflared tunnel
   // and set WORKER_INGEST_URL to the tunnel hostname).
