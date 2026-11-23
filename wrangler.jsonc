@@ -1,0 +1,32 @@
+// Root-level Wrangler config, used ONLY by Cloudflare Workers Builds
+// "Worker Previews": for non-production branches the pipeline runs
+// `npx wrangler preview` from the repo root (dashboard "Root directory: /"),
+// so wrangler resolves THIS file — apps/web/wrangler.jsonc is never found from
+// here. Production deploys still run `opennextjs-cloudflare deploy` inside
+// apps/web and use apps/web/wrangler.jsonc; keep the two files in sync.
+// Paths below are relative to this file (the repo root).
+{
+  "$schema": "apps/web/node_modules/wrangler/config-schema.json",
+  "name": "linkedin-operator-web",
+  "main": "apps/web/.open-next/worker.js",
+  "compatibility_date": "2025-03-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "apps/web/.open-next/assets",
+    "binding": "ASSETS"
+  },
+  // Non-secret runtime vars (see apps/web/wrangler.jsonc for details).
+  "vars": {
+    "WORKER_INGEST_URL": "https://worker.example.com",
+    "OPERATOR_EMAIL": "krikormher@gmail.com"
+  },
+  // Required by `wrangler preview`. Vars are NOT inherited from the top level,
+  // so mirror the non-secret ones for working preview deployments.
+  // https://developers.cloudflare.com/workers/previews/configuration/#wrangler-configuration-file
+  "previews": {
+    "vars": {
+      "WORKER_INGEST_URL": "https://worker.example.com",
+      "OPERATOR_EMAIL": "krikormher@gmail.com"
+    }
+  }
+}
