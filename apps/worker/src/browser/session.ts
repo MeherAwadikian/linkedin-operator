@@ -25,11 +25,32 @@ export interface Session {
 }
 
 export async function launchSession(opts: SessionOptions): Promise<Session> {
-  const context = await chromium.launchPersistentContext(opts.userDataDir, {
+  const base = {
     headless: opts.headless ?? false,
-    channel: opts.channel ?? 'chrome',
     viewport: { width: 1280, height: 800 },
-  });
+  };
+  let context: BrowserContext;
+  try {
+    context = await chromium.launchPersistentContext(opts.userDataDir, {
+      ...base,
+      channel: opts.channel ?? 'chrome',
+    });
+  } catch (err) {
+    // Google Chrome missing or broken: fall back to Playwright's bundled
+    // Chromium (installed by setup via `playwright install chromium`) so the
+    // operator still runs. Same defaults otherwise; no flags are hidden.
+    console.log(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        event: 'browser.channel_fallback',
+        from: opts.channel ?? 'chrome',
+        to: 'chromium',
+        reason:
+          err instanceof Error ? (err.message.split('\n')[0] ?? 'launch failed') : String(err),
+      }),
+    );
+    context = await chromium.launchPersistentContext(opts.userDataDir, base);
+  }
   const page = context.pages()[0] ?? (await context.newPage());
   return {
     context,
