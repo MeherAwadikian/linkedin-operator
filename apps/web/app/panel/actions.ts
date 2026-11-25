@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../lib/supabase/server.ts';
 
 interface ConnectRow {
   id: string;
@@ -39,20 +39,17 @@ interface CommentRow {
 /**
  * The START button's main run: refresh the LinkedIn session, then launch every
  * campaign still sitting in 'draft' across all five campaign tables by
- * enqueueing its worker job (the same jobs the classic pages enqueue). RLS
- * scopes every select/update to the signed-in operator; every outbound write
- * the workers produce still lands in the Approval Queue.
+ * enqueueing its worker job. Every outbound write the workers produce still
+ * lands in the Approval Queue.
  */
 export async function igniteRun(): Promise<void> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
   const app = supabase.schema('app');
 
   // Make sure the worker has a live session before campaigns need it.
-  await app.from('jobs_queue').insert({ type: 'linkedin.login', payload: {} });
+  await app
+    .from('jobs_queue')
+    .insert({ user_id: OPERATOR_ID, type: 'linkedin.login', payload: {} });
 
   const [connects, likes, posts, messages, comments] = await Promise.all([
     app
@@ -73,6 +70,7 @@ export async function igniteRun(): Promise<void> {
 
   for (const c of (connects.data ?? []) as ConnectRow[]) {
     await app.from('jobs_queue').insert({
+      user_id: OPERATOR_ID,
       type: 'campaign.start',
       payload: {
         campaign_id: c.id,
@@ -87,6 +85,7 @@ export async function igniteRun(): Promise<void> {
 
   for (const c of (likes.data ?? []) as LikeRow[]) {
     await app.from('jobs_queue').insert({
+      user_id: OPERATOR_ID,
       type: 'like_campaign.start',
       payload: {
         like_campaign_id: c.id,
@@ -101,6 +100,7 @@ export async function igniteRun(): Promise<void> {
 
   for (const c of (posts.data ?? []) as PostRow[]) {
     await app.from('jobs_queue').insert({
+      user_id: OPERATOR_ID,
       type: 'post_campaign.draft',
       payload: { post_campaign_id: c.id, brief: c.brief },
     });
@@ -109,6 +109,7 @@ export async function igniteRun(): Promise<void> {
 
   for (const c of (messages.data ?? []) as MessageRow[]) {
     await app.from('jobs_queue').insert({
+      user_id: OPERATOR_ID,
       type: 'message_campaign.start',
       payload: {
         message_campaign_id: c.id,
@@ -123,6 +124,7 @@ export async function igniteRun(): Promise<void> {
 
   for (const c of (comments.data ?? []) as CommentRow[]) {
     await app.from('jobs_queue').insert({
+      user_id: OPERATOR_ID,
       type: 'comment_campaign.start',
       payload: {
         comment_campaign_id: c.id,

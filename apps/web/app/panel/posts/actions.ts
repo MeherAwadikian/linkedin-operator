@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../../lib/supabase/server.ts';
 
 /**
  * Stage post campaigns (status 'draft'), one row per requested post. START
@@ -14,13 +14,13 @@ export async function stagePostCampaign(formData: FormData): Promise<void> {
   if (!brief) return;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
 
   // One row per post so each gets its own draft + approval entry.
-  const rows = Array.from({ length: count }, () => ({ brief, status: 'draft' }));
+  const rows = Array.from({ length: count }, () => ({
+    user_id: OPERATOR_ID,
+    brief,
+    status: 'draft',
+  }));
   await supabase.schema('app').from('post_campaigns').insert(rows);
   revalidatePath('/panel/posts');
 }

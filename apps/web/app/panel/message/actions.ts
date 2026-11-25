@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../../lib/supabase/server.ts';
 
 /**
  * Stage a message campaign (status 'draft'). START launches it: the worker
@@ -15,12 +15,9 @@ export async function stageMessageCampaign(formData: FormData): Promise<void> {
   if (!brief || !audience) return;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
 
   await supabase.schema('app').from('message_campaigns').insert({
+    user_id: OPERATOR_ID,
     brief,
     audience,
     network_type: 'first',

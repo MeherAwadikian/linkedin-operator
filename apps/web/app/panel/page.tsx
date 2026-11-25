@@ -12,7 +12,6 @@ import {
   WifiOff,
   XCircle,
 } from 'lucide-react';
-import { redirect } from 'next/navigation';
 import { igniteRun } from './actions.ts';
 import { AnimatedCounter } from '../../components/panel/animated-counter.tsx';
 import { HeroBackground } from '../../components/panel/hero-background.tsx';
@@ -40,10 +39,6 @@ const JOB_STATUS_ICON: Record<string, React.ReactNode> = {
 
 export default async function PanelDashboardPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
 
   const app = supabase.schema('app');
   const [heartbeatRes, jobsRes, ...countRes] = await Promise.all([
@@ -75,7 +70,7 @@ export default async function PanelDashboardPage() {
   const queuedTotal = countRes.reduce((sum, r) => sum + (r.count ?? 0), 0);
 
   return (
-    <PanelShell email={user.email ?? 'signed in'} active="/panel">
+    <PanelShell active="/panel">
       <RealtimeRefresh
         tables={[
           'jobs_queue',
@@ -207,7 +202,9 @@ export default async function PanelDashboardPage() {
                     </span>
                   </div>
                   {failed && j.error ? (
-                    <p className="mt-1 break-words font-mono text-xs text-flame-400/80">{j.error}</p>
+                    <p className="mt-1 break-words font-mono text-xs text-flame-400/80">
+                      {j.error}
+                    </p>
                   ) : null}
                 </li>
               );

@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../../lib/supabase/server.ts';
 
 /**
  * Stage a like campaign (status 'draft'). START launches it: the worker scans
@@ -14,12 +14,9 @@ export async function stageLikeCampaign(formData: FormData): Promise<void> {
   if (!criteria) return;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
 
   await supabase.schema('app').from('like_campaigns').insert({
+    user_id: OPERATOR_ID,
     criteria,
     source: 'feed',
     query: '',

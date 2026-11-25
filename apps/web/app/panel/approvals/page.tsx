@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { approveJob, rejectJob } from './actions.ts';
 import { PanelShell } from '../../../components/panel/panel-shell.tsx';
 import { RealtimeRefresh } from '../../../components/realtime-refresh.tsx';
@@ -15,10 +14,6 @@ interface PendingJob {
 
 export default async function PanelApprovalsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
 
   const { data } = await supabase
     .schema('app')
@@ -29,7 +24,7 @@ export default async function PanelApprovalsPage() {
   const pending = (data ?? []) as PendingJob[];
 
   return (
-    <PanelShell email={user.email ?? 'signed in'} active="/panel/approvals">
+    <PanelShell active="/panel/approvals">
       <RealtimeRefresh tables={['jobs_queue']} />
       <h1 className="mb-1 text-2xl font-black uppercase italic tracking-wide text-rod-500">
         Approval queue

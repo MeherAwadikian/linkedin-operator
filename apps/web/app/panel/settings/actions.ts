@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../../lib/supabase/server.ts';
 
 const URL_KEYS = {
   gmail_url: 'gmail_url',
@@ -16,10 +16,6 @@ const URL_KEYS = {
  */
 export async function savePanelUrls(formData: FormData): Promise<void> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
   const app = supabase.schema('app');
 
   for (const [field, key] of Object.entries(URL_KEYS)) {
@@ -27,7 +23,7 @@ export async function savePanelUrls(formData: FormData): Promise<void> {
     if (!url) continue;
     await app
       .from('settings')
-      .upsert({ user_id: user.id, key, value: { url } }, { onConflict: 'user_id,key' });
+      .upsert({ user_id: OPERATOR_ID, key, value: { url } }, { onConflict: 'user_id,key' });
   }
   revalidatePath('/panel/settings');
 }

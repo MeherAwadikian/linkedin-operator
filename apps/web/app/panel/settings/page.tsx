@@ -1,5 +1,4 @@
 import { KeyRound, Link2 } from 'lucide-react';
-import { redirect } from 'next/navigation';
 import { savePanelUrls } from './actions.ts';
 import { ActionForm } from '../../../components/panel/action-form.tsx';
 import { Reveal } from '../../../components/panel/motion.tsx';
@@ -34,10 +33,6 @@ function ApiKeyForm({ kind, label }: { kind: string; label: string }) {
 
 export default async function PanelSettingsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
 
   const app = supabase.schema('app');
   const [gmailRes, linkedinRes] = await Promise.all([
@@ -48,7 +43,7 @@ export default async function PanelSettingsPage() {
   const linkedinUrl = (linkedinRes.data?.value as { url?: string } | undefined)?.url ?? '';
 
   return (
-    <PanelShell email={user.email ?? 'signed in'} active="/panel/settings">
+    <PanelShell active="/panel/settings">
       <Reveal>
         <h1 className="mb-1 text-2xl font-black uppercase italic tracking-widest text-rod-500">
           Settings

@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../../lib/supabase/server.ts';
 
 /**
  * Stage a connect campaign (status 'draft'). Nothing runs yet: the dashboard's
@@ -15,15 +15,12 @@ export async function stageConnectCampaign(formData: FormData): Promise<void> {
   if (!audience) return;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
 
   await supabase
     .schema('app')
     .from('campaigns')
     .insert({
+      user_id: OPERATOR_ID,
       name: audience.slice(0, 80),
       query: audience,
       network_type: 'any',
