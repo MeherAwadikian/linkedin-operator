@@ -1,0 +1,12 @@
+[Unit]
+Description=LinkedIn Operator noVNC (websockify 6080 -> 5900)
+After=network-online.target lo-x11vnc.service
+Wants=lo-x11vnc.service
+
+[Service]
+ExecStart=/usr/bin/websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

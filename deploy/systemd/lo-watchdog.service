@@ -1,0 +1,8 @@
+[Unit]
+Description=LinkedIn Operator worker hang-watchdog (DB-spell-safe)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lo-watchdog.sh

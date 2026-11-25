@@ -1,0 +1,12 @@
+[Unit]
+Description=Publish LinkedIn Operator stable worker endpoint
+After=network-online.target lo-worker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/lo-publish-endpoint.sh
+
+[Install]
+WantedBy=multi-user.target
