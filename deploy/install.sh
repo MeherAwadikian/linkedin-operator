@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 #
 # install.sh - Provision a fresh Ubuntu 24.04 host to run the LinkedIn Operator
-# worker 24/7 (Playwright under Xvfb) behind a cloudflared quick tunnel.
+# worker 24/7 (Playwright under Xvfb), reachable over a STABLE Caddy HTTPS
+# endpoint, with crash + hang recovery and a noVNC login hand-off.
 #
 # Usage (as root on the droplet):
 #   bash deploy/install.sh
 #
-# Prereqs: you must place a valid apps/worker/.env on the host BEFORE enabling
-# the services (SUPABASE_SERVICE_ROLE_KEY, VAULT_MASTER_KEY, WORKER_INGEST_TOKEN,
-# etc.). This script never writes secrets.
+# Prereqs: place a valid apps/worker/.env on the host BEFORE enabling the
+# services. Besides the usual secrets (SUPABASE_SERVICE_ROLE_KEY,
+# VAULT_MASTER_KEY, WORKER_INGEST_TOKEN, NEXT_PUBLIC_SUPABASE_URL), set:
+#   WORKER_ID=worker-droplet-<region>
+#   WORKER_PUBLIC_URL=https://lo.<dashed-ip>.sslip.io
+# This script never writes secrets.
+#
+# After running: append deploy/caddy/linkedin-operator.caddy.example to
+# /etc/caddy/Caddyfile (substituting your IP + a bcrypt password), then
+# `systemctl reload caddy`. See deploy/README.md.
 #
 set -euo pipefail
 
@@ -19,7 +27,17 @@ BRANCH=${BRANCH:-main}
 echo "==> apt deps"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y git curl ca-certificates xvfb
+# xvfb: headful Chrome display. caddy: stable HTTPS front door.
+# x11vnc/novnc/websockify: the login hand-off surface.
+apt-get install -y git curl ca-certificates xvfb x11vnc novnc websockify debian-keyring debian-archive-keyring apt-transport-https
+
+echo "==> Caddy (official repo)"
+if ! command -v caddy >/dev/null; then
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+  apt-get update -y
+  apt-get install -y caddy
+fi
 
 echo "==> Node 24 (NodeSource)"
 if ! command -v node >/dev/null || [ "$(node -v | cut -dv -f2 | cut -d. -f1)" -lt 24 ]; then
@@ -46,8 +64,6 @@ pnpm install
 echo "==> Playwright system deps + Google Chrome (worker uses channel:'chrome')"
 cd "$REPO_DIR/apps/worker"
 pnpm exec playwright install-deps
-# Chrome first (the channel the worker uses); bundled Chromium as fallback so
-# automation still works if the Chrome package is unavailable on this distro.
 pnpm exec playwright install chrome || pnpm exec playwright install chromium
 
 echo "==> Browser preflight (launch + close a blank page)"
@@ -55,23 +71,33 @@ node "$REPO_DIR/setup/preflight-browser.mjs" || {
   echo "browser preflight FAILED - LinkedIn automation will not run until this is fixed" >&2
 }
 
-echo "==> cloudflared"
-if ! command -v cloudflared >/dev/null; then
-  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-    -o /usr/bin/cloudflared
-  chmod +x /usr/bin/cloudflared
-fi
-
 if [ ! -f "$REPO_DIR/apps/worker/.env" ]; then
   echo "!! apps/worker/.env is missing - copy it up (scp) before starting the services." >&2
 fi
 
-echo "==> install tunnel script + systemd units"
-install -m 0755 "$REPO_DIR/deploy/lo-tunnel.sh" /usr/local/bin/lo-tunnel.sh
-install -m 0644 "$REPO_DIR/deploy/systemd/lo-worker.service" /etc/systemd/system/lo-worker.service
-install -m 0644 "$REPO_DIR/deploy/systemd/lo-tunnel.service" /etc/systemd/system/lo-tunnel.service
+echo "==> install scripts + systemd units"
+install -m 0755 "$REPO_DIR/deploy/lo-publish-endpoint.sh" /usr/local/bin/lo-publish-endpoint.sh
+install -m 0755 "$REPO_DIR/deploy/lo-watchdog.sh"         /usr/local/bin/lo-watchdog.sh
+install -m 0755 "$REPO_DIR/deploy/lo-x11vnc.sh"           /usr/local/bin/lo-x11vnc.sh
+for u in lo-worker lo-endpoint lo-watchdog lo-x11vnc lo-novnc; do
+  install -m 0644 "$REPO_DIR/deploy/systemd/$u.service" "/etc/systemd/system/$u.service"
+done
+install -m 0644 "$REPO_DIR/deploy/systemd/lo-watchdog.timer" /etc/systemd/system/lo-watchdog.timer
 systemctl daemon-reload
-systemctl enable lo-worker.service lo-tunnel.service
+systemctl enable lo-worker.service lo-endpoint.service lo-x11vnc.service lo-novnc.service lo-watchdog.timer
 
-echo "==> done. Start with: systemctl start lo-worker lo-tunnel"
-echo "   Logs: journalctl -u lo-worker -f  /  journalctl -u lo-tunnel -f"
+cat <<'NEXT'
+
+==> units installed + enabled. Remaining manual steps:
+  1) Append deploy/caddy/linkedin-operator.caddy.example to /etc/caddy/Caddyfile
+     (substitute your dashed IP + a `caddy hash-password` bcrypt), then:
+       caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && systemctl reload caddy
+  2) Ensure apps/worker/.env has WORKER_PUBLIC_URL=https://lo.<dashed-ip>.sslip.io
+  3) Start everything:
+       systemctl start lo-worker lo-endpoint lo-x11vnc lo-novnc && systemctl start lo-watchdog.timer
+  Logs: journalctl -u lo-worker -f   |   tail -f /var/log/lo-watchdog.log
+
+Optional fallback: the legacy cloudflared quick tunnel (deploy/lo-tunnel.sh +
+systemd/lo-tunnel.service) still works if you cannot use a stable Caddy host;
+do not run both the tunnel and lo-endpoint (whichever publishes last wins).
+NEXT

@@ -1,0 +1,30 @@
+# LinkedIn Operator - Caddy vhosts (APPEND to /etc/caddy/Caddyfile).
+#
+# This box's Caddyfile may be shared with other apps, so install.sh does NOT
+# auto-manage it. Append these two blocks by hand, substituting the droplet's
+# public IP with dashes for the sslip.io host (e.g. 138.68.240.115 ->
+# 138-68-240-115), then: `caddy validate --config /etc/caddy/Caddyfile
+# --adapter caddyfile && systemctl reload caddy`.
+#
+# sslip.io resolves <label>.<dashed-ip>.sslip.io to that IP, which is all
+# Let's Encrypt needs - so you get stable HTTPS hostnames without owning a
+# domain. Caddy provisions and auto-renews the certs.
+
+# 1) Stable worker ingest. Replaces the ephemeral cloudflared quick tunnel.
+#    Set WORKER_PUBLIC_URL=https://lo.<dashed-ip>.sslip.io in apps/worker/.env
+#    so lo-endpoint.service publishes this exact URL to app.worker_endpoints.
+lo.<DASHED_IP>.sslip.io {
+	reverse_proxy localhost:8787
+}
+
+# 2) noVNC login hand-off. Lets the operator see the worker's headful Chrome to
+#    complete a LinkedIn login / 2FA / checkpoint. Password-gate it:
+#       caddy hash-password --plaintext 'YOUR_STRONG_PASSWORD'
+#    and paste the bcrypt hash below. Stop lo-novnc + lo-x11vnc when not in use
+#    to close the remote-desktop surface.
+vnc.<DASHED_IP>.sslip.io {
+	basic_auth {
+		operator <BCRYPT_HASH>
+	}
+	reverse_proxy 127.0.0.1:6080
+}

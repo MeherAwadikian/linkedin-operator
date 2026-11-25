@@ -1,0 +1,12 @@
+[Unit]
+Description=LinkedIn Operator x11vnc (attaches to worker Xvfb, localhost only)
+After=network-online.target lo-worker.service
+Wants=lo-worker.service
+
+[Service]
+ExecStart=/usr/local/bin/lo-x11vnc.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
