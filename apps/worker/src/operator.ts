@@ -114,13 +114,14 @@ export class LinkedInOperator {
   }
 
   private async doLogin(userId: string): Promise<JobResult> {
+    // Credentials are OPTIONAL: if the persistent browser is already signed in
+    // (the operator logged in by hand via the headful window / noVNC), no stored
+    // email/password is needed. They are only used to fill the login form when
+    // the session is not already authenticated.
     const [email, password] = await Promise.all([
       this.loginEmail(userId),
       fetchSecret(this.cfg.sb, this.cfg.masterKey, userId, 'linkedin_password'),
     ]);
-    if (!email || !password) {
-      return { status: 'failed', error: 'LinkedIn email and/or password not configured' };
-    }
 
     const { page } = await this.ensureSession();
     const result = await loginToLinkedIn(page, email, password);
