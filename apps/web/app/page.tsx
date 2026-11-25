@@ -11,6 +11,7 @@ interface JobSummary {
   id: string;
   type: string;
   status: string;
+  error: string | null;
   created_at: string;
 }
 interface PersonSummary {
@@ -34,7 +35,7 @@ export default async function DashboardPage() {
   const [jobsRes, accountRes, peopleRes, heartbeatRes] = await Promise.all([
     app
       .from('jobs_queue')
-      .select('id,type,status,created_at')
+      .select('id,type,status,error,created_at')
       .order('created_at', { ascending: false })
       .limit(6),
     app
@@ -174,12 +175,24 @@ export default async function DashboardPage() {
           <p className="text-sm text-neutral-500">No jobs yet.</p>
         ) : (
           <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
-            {recentJobs.map((j) => (
-              <li key={j.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="font-mono">{j.type}</span>
-                <span className="text-neutral-500">{j.status}</span>
-              </li>
-            ))}
+            {recentJobs.map((j) => {
+              const failed = j.status === 'failed' || j.status === 'blocked';
+              return (
+                <li key={j.id} className="px-4 py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono">{j.type}</span>
+                    <span className={failed ? 'text-red-600 dark:text-red-400' : 'text-neutral-500'}>
+                      {j.status}
+                    </span>
+                  </div>
+                  {failed && j.error ? (
+                    <p className="mt-1 break-words font-mono text-xs text-red-600/80 dark:text-red-400/80">
+                      {j.error}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

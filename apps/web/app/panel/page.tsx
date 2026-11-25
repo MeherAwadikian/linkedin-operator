@@ -55,7 +55,7 @@ export default async function PanelDashboardPage() {
       .maybeSingle(),
     app
       .from('jobs_queue')
-      .select('id,type,status,created_at')
+      .select('id,type,status,error,created_at')
       .order('created_at', { ascending: false })
       .limit(8),
     ...CAMPAIGN_TABLES.map((t) =>
@@ -70,6 +70,7 @@ export default async function PanelDashboardPage() {
     id: string;
     type: string;
     status: string;
+    error: string | null;
   }>;
   const queuedTotal = countRes.reduce((sum, r) => sum + (r.count ?? 0), 0);
 
@@ -190,17 +191,27 @@ export default async function PanelDashboardPage() {
           </div>
         ) : (
           <ul className="divide-y divide-chrome-600/20 rounded-lg border border-chrome-600/30 bg-black/30 backdrop-blur">
-            {jobs.map((j) => (
-              <li key={j.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="font-mono text-neutral-100">{j.type}</span>
-                <span className="flex items-center gap-1.5 text-chrome-400">
-                  {JOB_STATUS_ICON[j.status] ?? (
-                    <CircleDashed className="h-3.5 w-3.5 text-flame-400" aria-hidden="true" />
-                  )}
-                  {j.status}
-                </span>
-              </li>
-            ))}
+            {jobs.map((j) => {
+              const failed = j.status === 'failed' || j.status === 'blocked';
+              return (
+                <li key={j.id} className="px-4 py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-neutral-100">{j.type}</span>
+                    <span
+                      className={`flex items-center gap-1.5 ${failed ? 'text-flame-400' : 'text-chrome-400'}`}
+                    >
+                      {JOB_STATUS_ICON[j.status] ?? (
+                        <CircleDashed className="h-3.5 w-3.5 text-flame-400" aria-hidden="true" />
+                      )}
+                      {j.status}
+                    </span>
+                  </div>
+                  {failed && j.error ? (
+                    <p className="mt-1 break-words font-mono text-xs text-flame-400/80">{j.error}</p>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </Reveal>
