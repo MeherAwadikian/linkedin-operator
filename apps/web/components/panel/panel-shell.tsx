@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ClipboardCheck,
   Flame,
   Gauge,
   Heart,
@@ -19,13 +20,14 @@ const NAV = [
   { label: 'Like', href: '/panel/like', icon: Heart },
   { label: 'Posts', href: '/panel/posts', icon: Newspaper },
   { label: 'Comment', href: '/panel/comment', icon: MessageSquareText },
+  { label: 'Approvals', href: '/panel/approvals', icon: ClipboardCheck },
   { label: 'Settings', href: '/panel/settings', icon: Settings },
 ] as const;
 
 /**
  * Hot-rod shell for the control panel: candy-apple red over near-black, chrome
- * borders, flame-yellow accents, glassmorphism header. Deliberately always
- * dark; the classic pages keep the neutral theme.
+ * borders, flame-yellow accents, glassmorphism header. This is the only UI;
+ * it is deliberately always dark.
  */
 export function PanelShell({
   active,
