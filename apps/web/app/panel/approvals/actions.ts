@@ -1,15 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../../lib/supabase/server.ts';
 
 async function decide(jobId: string, decision: 'approved' | 'rejected'): Promise<void> {
   if (!jobId) return;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
   const app = supabase.schema('app');
 
   // Approve → back to 'queued' so the worker's claim loop picks it up.
@@ -22,7 +18,7 @@ async function decide(jobId: string, decision: 'approved' | 'rejected'): Promise
     .from('jobs_queue')
     .update({ status })
     .eq('id', jobId)
-    .eq('user_id', user.id)
+    .eq('user_id', OPERATOR_ID)
     .eq('status', 'awaiting_approval')
     .select('id')
     .maybeSingle();
@@ -32,7 +28,7 @@ async function decide(jobId: string, decision: 'approved' | 'rejected'): Promise
     job_id: jobId,
     decision,
     decided_at: new Date().toISOString(),
-    decided_by: user.id,
+    decided_by: OPERATOR_ID,
   });
   revalidatePath('/panel/approvals');
 }

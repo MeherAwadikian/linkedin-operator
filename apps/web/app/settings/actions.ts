@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../lib/supabase/server.ts';
 
 const INGEST_TOKEN = process.env.WORKER_INGEST_TOKEN ?? '';
 
@@ -81,12 +81,9 @@ async function forwardSecret(userId: string, kind: string, value: string): Promi
   if (!res.ok) throw new Error(`worker ingest failed (${res.status})`);
 }
 
+// No user login: every row belongs to the single operator.
 async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.id ?? null;
+  return OPERATOR_ID;
 }
 
 /** Save an API key (anthropic/openrouter/deepseek) into the vault. */
@@ -115,21 +112,17 @@ export async function saveLinkedInAccount(formData: FormData): Promise<void> {
   const profileUrl = String(formData.get('profile_url') ?? '').trim();
   const password = String(formData.get('password') ?? '');
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
 
   if (email) {
     await supabase
       .schema('app')
       .from('accounts')
       .update({ login_email: email })
-      .eq('user_id', user.id)
+      .eq('user_id', OPERATOR_ID)
       .eq('platform', 'linkedin');
   }
-  if (profileUrl) await saveSetting(user.id, 'linkedin_profile_url', { url: profileUrl });
-  if (password) await forwardSecret(user.id, 'linkedin_password', password);
+  if (profileUrl) await saveSetting(OPERATOR_ID, 'linkedin_profile_url', { url: profileUrl });
+  if (password) await forwardSecret(OPERATOR_ID, 'linkedin_password', password);
   revalidatePath('/settings');
 }
 
@@ -152,15 +145,11 @@ export async function updatePersona(formData: FormData): Promise<void> {
     .map((s) => s.trim())
     .filter(Boolean);
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
   await supabase
     .schema('app')
     .from('personas')
     .update({ tone_instructions: tone, banned_openers: bannedOpeners })
-    .eq('user_id', user.id)
+    .eq('user_id', OPERATOR_ID)
     .eq('active', true);
   revalidatePath('/settings');
 }
@@ -172,7 +161,10 @@ export async function setDryRun(formData: FormData): Promise<void> {
   await supabase
     .schema('app')
     .from('settings')
-    .upsert({ key: 'dry_run', value: { enabled } }, { onConflict: 'user_id,key' });
+    .upsert(
+      { user_id: OPERATOR_ID, key: 'dry_run', value: { enabled } },
+      { onConflict: 'user_id,key' },
+    );
   revalidatePath('/settings');
 }
 
@@ -182,16 +174,12 @@ export async function updateRule(formData: FormData): Promise<void> {
   const approvalLevel = Number(formData.get('approval_level'));
   const dailyLimit = Number(formData.get('daily_limit'));
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
   const app = supabase.schema('app');
 
   const { data: old } = await app
     .from('rules')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', OPERATOR_ID)
     .eq('action_type', actionType)
     .maybeSingle();
   if (!old) return;

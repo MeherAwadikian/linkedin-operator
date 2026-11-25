@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { stageConnectCampaign } from './actions.ts';
 import { CampaignForm } from '../../../components/panel/campaign-form.tsx';
 import { CampaignList } from '../../../components/panel/campaign-list.tsx';
@@ -20,10 +19,6 @@ interface Row {
 
 export default async function ConnectCampaignPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
 
   const { data } = await supabase
     .schema('app')
@@ -34,7 +29,7 @@ export default async function ConnectCampaignPage() {
   const rows = (data ?? []) as Row[];
 
   return (
-    <PanelShell email={user.email ?? 'signed in'} active="/panel/connect">
+    <PanelShell active="/panel/connect">
       <RealtimeRefresh tables={['campaigns']} />
       <h1 className="mb-1 text-2xl font-black uppercase italic tracking-widest text-rod-500">
         Connect campaign

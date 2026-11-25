@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../../lib/supabase/server.ts';
+import { createClient, OPERATOR_ID } from '../../../lib/supabase/server.ts';
 
 /**
  * Stage a comment campaign (status 'draft'). START launches it: the worker
@@ -16,15 +16,12 @@ export async function stageCommentCampaign(formData: FormData): Promise<void> {
   if (!brief) return;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
 
   await supabase
     .schema('app')
     .from('comment_campaigns')
     .insert({
+      user_id: OPERATOR_ID,
       brief,
       audience,
       source: audience ? 'search' : 'feed',
