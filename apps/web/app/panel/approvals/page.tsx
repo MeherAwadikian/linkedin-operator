@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import { approveJob, rejectJob } from './actions.ts';
-import { NavShell } from '../../components/nav-shell.tsx';
-import { RealtimeRefresh } from '../../components/realtime-refresh.tsx';
-import { createClient } from '../../lib/supabase/server.ts';
+import { PanelShell } from '../../../components/panel/panel-shell.tsx';
+import { RealtimeRefresh } from '../../../components/realtime-refresh.tsx';
+import { createClient } from '../../../lib/supabase/server.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,7 @@ interface PendingJob {
   created_at: string;
 }
 
-export default async function ApprovalsPage() {
+export default async function PanelApprovalsPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -29,29 +29,33 @@ export default async function ApprovalsPage() {
   const pending = (data ?? []) as PendingJob[];
 
   return (
-    <NavShell email={user.email ?? 'signed in'}>
-      <RealtimeRefresh />
-      <h1 className="mb-1 text-2xl font-semibold">Approval queue</h1>
-      <p className="mb-8 text-sm text-neutral-500">
+    <PanelShell email={user.email ?? 'signed in'} active="/panel/approvals">
+      <RealtimeRefresh tables={['jobs_queue']} />
+      <h1 className="mb-1 text-2xl font-black uppercase italic tracking-wide text-rod-500">
+        Approval queue
+      </h1>
+      <p className="mb-8 text-sm text-chrome-400">
         Nothing here is sent until you approve it. {pending.length} awaiting review.
       </p>
 
       {pending.length === 0 ? (
-        <p className="text-sm text-neutral-500">No actions awaiting approval.</p>
+        <div className="rounded-lg border border-dashed border-chrome-600/30 bg-black/20 px-4 py-8 text-center">
+          <p className="text-sm text-chrome-600">No actions awaiting approval.</p>
+        </div>
       ) : (
         <ul className="flex flex-col gap-3">
           {pending.map((job) => (
             <li
               key={job.id}
-              className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
+              className="rounded-lg border border-rod-800/50 bg-black/30 p-4 backdrop-blur"
             >
               <div className="mb-2 flex items-center justify-between">
-                <span className="font-mono text-sm">{job.type}</span>
-                <span className="text-xs text-neutral-500">
+                <span className="font-mono text-sm text-neutral-100">{job.type}</span>
+                <span className="text-xs text-chrome-600">
                   {new Date(job.created_at).toLocaleString()}
                 </span>
               </div>
-              <pre className="mb-3 overflow-x-auto rounded bg-neutral-100 p-2 text-xs dark:bg-neutral-900">
+              <pre className="mb-3 overflow-x-auto rounded bg-black/50 p-2 text-xs text-chrome-300">
                 {JSON.stringify(job.payload, null, 2)}
               </pre>
               <div className="flex gap-2">
@@ -59,7 +63,7 @@ export default async function ApprovalsPage() {
                   <input type="hidden" name="job_id" value={job.id} />
                   <button
                     type="submit"
-                    className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900"
+                    className="rounded-md bg-rod-600 px-3 py-1.5 text-sm font-semibold text-white shadow-[0_0_14px_rgba(215,20,26,0.5)] hover:bg-rod-500"
                   >
                     Approve
                   </button>
@@ -68,7 +72,7 @@ export default async function ApprovalsPage() {
                   <input type="hidden" name="job_id" value={job.id} />
                   <button
                     type="submit"
-                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+                    className="rounded-md border border-chrome-600/40 px-3 py-1.5 text-sm text-chrome-300 hover:bg-rod-900/60 hover:text-white"
                   >
                     Reject
                   </button>
@@ -78,6 +82,6 @@ export default async function ApprovalsPage() {
           ))}
         </ul>
       )}
-    </NavShell>
+    </PanelShell>
   );
 }

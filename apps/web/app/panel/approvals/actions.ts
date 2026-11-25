@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '../../lib/supabase/server.ts';
+import { createClient } from '../../../lib/supabase/server.ts';
 
 async function decide(jobId: string, decision: 'approved' | 'rejected'): Promise<void> {
   if (!jobId) return;
@@ -34,7 +34,7 @@ async function decide(jobId: string, decision: 'approved' | 'rejected'): Promise
     decided_at: new Date().toISOString(),
     decided_by: user.id,
   });
-  revalidatePath('/approvals');
+  revalidatePath('/panel/approvals');
 }
 
 export async function approveJob(formData: FormData): Promise<void> {

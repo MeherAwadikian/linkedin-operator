@@ -9,6 +9,7 @@ const LINKS = [
   { label: 'Like', href: '/panel/like', heading: 'Like campaign' },
   { label: 'Posts', href: '/panel/posts', heading: 'Posts campaign' },
   { label: 'Comment', href: '/panel/comment', heading: 'Comment campaign' },
+  { label: 'Approvals', href: '/panel/approvals', heading: 'Approval queue' },
   { label: 'Settings', href: '/panel/settings', heading: 'Settings' },
 ] as const;
 
