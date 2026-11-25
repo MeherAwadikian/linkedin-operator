@@ -6,10 +6,24 @@ import { createClient } from '../../lib/supabase/server.ts';
 const INGEST_TOKEN = process.env.WORKER_INGEST_TOKEN ?? '';
 
 /**
- * Only send secrets to a worker URL we recognize: a cloudflared quick tunnel over
- * https, or localhost (same-machine). This bounds the endpoint even though only
- * service_role can write app.worker_endpoints: defense in depth against a poisoned
- * row routing plaintext secrets off-host.
+ * Hosts we trust to receive forwarded secrets over https. The droplet's stable
+ * Caddy endpoint (TLS via Let's Encrypt, reverse-proxying the worker's localhost
+ * ingest) is the permanent production path; `*.trycloudflare.com` stays allowed
+ * for the ephemeral-quick-tunnel fallback and local dev. An env override lets a
+ * self-hoster add their own stable host without a code change.
+ */
+const STABLE_INGEST_HOSTS = new Set(
+  ['lo.138-68-240-115.sslip.io', process.env.WORKER_INGEST_HOST]
+    .filter((h): h is string => Boolean(h))
+    .map((h) => h.toLowerCase()),
+);
+
+/**
+ * Only send secrets to a worker URL we recognize: the stable Caddy host(s) above
+ * or a cloudflared quick tunnel, both over https, or localhost (same-machine).
+ * This bounds the endpoint even though only service_role can write
+ * app.worker_endpoints: defense in depth against a poisoned row routing plaintext
+ * secrets off-host.
  */
 function isAllowedIngestUrl(raw: string): boolean {
   try {
@@ -17,7 +31,9 @@ function isAllowedIngestUrl(raw: string): boolean {
     if ((u.hostname === '127.0.0.1' || u.hostname === 'localhost') && u.protocol === 'http:') {
       return true;
     }
-    return u.protocol === 'https:' && u.hostname.endsWith('.trycloudflare.com');
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    return host.endsWith('.trycloudflare.com') || STABLE_INGEST_HOSTS.has(host);
   } catch {
     return false;
   }
